@@ -48,16 +48,18 @@ st.markdown("""
     color: #111827;
 }
 .block-container {
-    padding-top: 1.4rem;
+    padding-top: 3.8rem;
     padding-bottom: 3rem;
     max-width: 1500px;
 }
+
 .top-shell {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-    padding: 26px 30px;
+    padding: 30px 30px;
     border-radius: 22px;
     color: white;
     box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+    margin-top: 8px;
     margin-bottom: 20px;
 }
 .app-title {
