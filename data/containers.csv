@@ -1,1 +1,2 @@
 container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,created_at,updated_at
+d92016fe-5d30-4e95-88f0-5b10af781801,123,123123,Richlink,12312,3123,2026-W23,2026-W23,2026-06-01,Planned,123123,,,2026-06-01 11:32:29,2026-06-01 11:32:29
