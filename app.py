@@ -68,14 +68,18 @@ def read_csv(path, columns):
     try:
         file = repo.get_contents(path, ref=branch)
         content = base64.b64decode(file.content).decode("utf-8")
+
         if not content.strip():
             return pd.DataFrame(columns=columns)
 
         df = pd.read_csv(StringIO(content), dtype=str).fillna("")
+
         for col in columns:
             if col not in df.columns:
                 df[col] = ""
+
         return df[columns]
+
     except Exception:
         return pd.DataFrame(columns=columns)
 
@@ -94,6 +98,7 @@ def write_csv(path, df, message):
 
 def add_log(container_id, action, old_value="", new_value="", note=""):
     logs = read_csv("data/container_logs.csv", LOG_COLUMNS)
+
     new_log = {
         "log_id": str(uuid.uuid4()),
         "container_id": container_id,
@@ -103,6 +108,7 @@ def add_log(container_id, action, old_value="", new_value="", note=""):
         "note": note,
         "created_at": now_str(),
     }
+
     logs = pd.concat([logs, pd.DataFrame([new_log])], ignore_index=True)
     write_csv("data/container_logs.csv", logs, "Update container logs")
 
@@ -162,16 +168,20 @@ if not is_admin:
 else:
     containers_view = containers.copy()
 
-active_view = containers_view[~containers_view["status"].isin(["Completed", "Cancelled"])].copy()
+active_view = containers_view[
+    ~containers_view["status"].isin(["Completed", "Cancelled"])
+].copy()
 
 supplier_options = suppliers[
     suppliers["active"].astype(str).str.lower() != "false"
 ]["supplier_name"].tolist()
+
 supplier_options = sorted([s for s in supplier_options if s])
+
 
 st.markdown("# Container Tracker GPC")
 
-nav_cols = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 4])
+nav_cols = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 2])
 
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
@@ -192,13 +202,14 @@ if is_admin:
 if nav_cols[4].button("Logs", use_container_width=True):
     st.session_state.page = "Logs"
 
-if nav_cols[5].button("Logout"):
+if nav_cols[5].button("🚪 Logout", use_container_width=True):
     st.session_state.clear()
     st.rerun()
 
-st.caption(f"Logged in as: {st.session_state.username} | Role: {st.session_state.role}")
+st.caption(f"👤 {st.session_state.username} | Role: {st.session_state.role}")
 
 st.divider()
+
 
 total = len(active_view)
 on_water = len(active_view[active_view["status"] == "On water"])
@@ -221,6 +232,7 @@ def save_edited_containers(original_df, edited_df):
 
     for _, edited_row in edited_df.iterrows():
         cid = edited_row["container_id"]
+
         original_row = original_df[original_df["container_id"] == cid]
 
         if original_row.empty:
@@ -234,13 +246,18 @@ def save_edited_containers(original_df, edited_df):
 
         main_idx = main_idx[0]
 
-        for col in [
+        editable_columns = [
             "invoice_number", "origin_port", "destination_port",
             "departure_week", "arrival_week", "eta_date", "status",
             "shipping_line", "bl_number", "notes"
-        ]:
-            old = str(original_row[col])
-            new = str(edited_row[col])
+        ]
+
+        for col in editable_columns:
+            old = "" if pd.isna(original_row[col]) else str(original_row[col])
+            new = "" if pd.isna(edited_row[col]) else str(edited_row[col])
+
+            if col == "eta_date" and new:
+                new = str(pd.to_datetime(new).date())
 
             if old != new:
                 containers.at[main_idx, col] = new
@@ -266,7 +283,12 @@ if st.session_state.page == "Dashboard":
     search = f1.text_input("Search")
     status_filter = f2.selectbox("Status", ["All"] + STATUSES)
     week_sort = f3.selectbox("Sort arrival week", ["Ascending", "Descending"])
-    supplier_filter = f4.selectbox("Supplier", ["All"] + supplier_options) if is_admin else user_supplier
+
+    if is_admin:
+        supplier_filter = f4.selectbox("Supplier", ["All"] + supplier_options)
+    else:
+        supplier_filter = user_supplier
+        f4.text_input("Supplier", value=user_supplier, disabled=True)
 
     dashboard_df = active_view.copy()
 
@@ -297,23 +319,46 @@ if st.session_state.page == "Dashboard":
             "eta_date", "status", "shipping_line", "bl_number", "notes"
         ]
 
+        editor_df = dashboard_df[editable_cols].copy()
+
+        editor_df["eta_date"] = pd.to_datetime(
+            editor_df["eta_date"],
+            errors="coerce"
+        ).dt.date
+
         edited = st.data_editor(
-            dashboard_df[editable_cols],
+            editor_df,
             use_container_width=True,
             hide_index=True,
             disabled=["container_id", "container_number", "supplier"],
             column_config={
-                "status": st.column_config.SelectboxColumn("Status", options=STATUSES),
-                "departure_week": st.column_config.SelectboxColumn("Departure Week", options=week_options()),
-                "arrival_week": st.column_config.SelectboxColumn("Arrival Week", options=week_options()),
-                "eta_date": st.column_config.DateColumn("ETA Date"),
                 "container_id": None,
+                "status": st.column_config.SelectboxColumn(
+                    "Status",
+                    options=STATUSES,
+                    required=True
+                ),
+                "departure_week": st.column_config.SelectboxColumn(
+                    "Departure Week",
+                    options=week_options(),
+                    required=True
+                ),
+                "arrival_week": st.column_config.SelectboxColumn(
+                    "Arrival Week",
+                    options=week_options(),
+                    required=True
+                ),
+                "eta_date": st.column_config.DateColumn(
+                    "ETA Date",
+                    format="YYYY-MM-DD"
+                ),
             },
             key="dashboard_editor",
         )
 
         if st.button("Save dashboard changes"):
-            save_edited_containers(dashboard_df[editable_cols], edited)
+            original_df = dashboard_df[editable_cols].copy()
+            save_edited_containers(original_df, edited)
 
 
 elif st.session_state.page == "Containers":
@@ -373,7 +418,9 @@ elif st.session_state.page == "Containers":
                 containers_view["container_number"].tolist(),
             )
 
-            row = containers_view[containers_view["container_number"] == selected_container].iloc[0]
+            row = containers_view[
+                containers_view["container_number"] == selected_container
+            ].iloc[0]
 
             with st.form("edit_container_form"):
                 c1, c2, c3 = st.columns(3)
@@ -409,15 +456,20 @@ elif st.session_state.page == "Containers":
                     weeks,
                     index=weeks.index(row["departure_week"]) if row["departure_week"] in weeks else 0,
                 )
+
                 arrival_week = c8.selectbox(
                     "Arrival Week",
                     weeks,
                     index=weeks.index(row["arrival_week"]) if row["arrival_week"] in weeks else 0,
                 )
-                eta_date = c9.date_input(
-                    "ETA Date",
-                    value=pd.to_datetime(row["eta_date"]).date() if row["eta_date"] else date.today(),
-                )
+
+                eta_value = date.today()
+                if row["eta_date"]:
+                    parsed_eta = pd.to_datetime(row["eta_date"], errors="coerce")
+                    if not pd.isna(parsed_eta):
+                        eta_value = parsed_eta.date()
+
+                eta_date = c9.date_input("ETA Date", value=eta_value)
 
                 bl_number = st.text_input("B/L Number", value=row["bl_number"])
                 notes = st.text_area("Notes", value=row["notes"])
@@ -452,7 +504,9 @@ elif st.session_state.page == "Containers":
             if is_admin:
                 with st.expander("Danger zone"):
                     if st.button("Delete selected container"):
-                        containers = containers[containers["container_id"] != row["container_id"]]
+                        containers = containers[
+                            containers["container_id"] != row["container_id"]
+                        ]
                         write_csv("data/containers.csv", containers, f"Delete container {selected_container}")
                         add_log(row["container_id"], "Container deleted", selected_container, "")
                         st.success("Container deleted.")
@@ -463,6 +517,7 @@ elif st.session_state.page == "Containers":
 
         with st.form("add_container_form"):
             c1, c2, c3 = st.columns(3)
+
             container_number = c1.text_input("Container Number")
             invoice_number = c2.text_input("Invoice Number")
 
@@ -473,14 +528,26 @@ elif st.session_state.page == "Containers":
                 c3.text_input("Supplier", value=supplier, disabled=True)
 
             c4, c5, c6 = st.columns(3)
+
             origin_port = c4.text_input("Origin Port")
             destination_port = c5.text_input("Destination Port")
             shipping_line = c6.text_input("Shipping Line")
 
             c7, c8, c9 = st.columns(3)
+
             weeks = week_options()
-            departure_week = c7.selectbox("Departure Week", weeks, index=weeks.index(current_week_code()))
-            arrival_week = c8.selectbox("Arrival Week", weeks, index=weeks.index(current_week_code()))
+            departure_week = c7.selectbox(
+                "Departure Week",
+                weeks,
+                index=weeks.index(current_week_code())
+            )
+
+            arrival_week = c8.selectbox(
+                "Arrival Week",
+                weeks,
+                index=weeks.index(current_week_code())
+            )
+
             eta_date = c9.date_input("ETA Date", value=date.today())
 
             status = st.selectbox("Status", STATUSES)
@@ -494,6 +561,8 @@ elif st.session_state.page == "Containers":
                     st.error("Container Number is required.")
                 elif container_number.strip() in containers["container_number"].tolist():
                     st.error("Container Number already exists.")
+                elif not supplier:
+                    st.error("Supplier is required.")
                 else:
                     container_id = str(uuid.uuid4())
 
@@ -515,7 +584,11 @@ elif st.session_state.page == "Containers":
                         "updated_at": now_str(),
                     }
 
-                    containers = pd.concat([containers, pd.DataFrame([new_row])], ignore_index=True)
+                    containers = pd.concat(
+                        [containers, pd.DataFrame([new_row])],
+                        ignore_index=True
+                    )
+
                     write_csv("data/containers.csv", containers, f"Add container {container_number}")
                     add_log(container_id, "Container created", "", container_number)
 
@@ -541,7 +614,11 @@ elif st.session_state.page == "Suppliers" and is_admin:
             st.divider()
             st.subheader("Edit Supplier")
 
-            selected_supplier = st.selectbox("Select supplier", suppliers["supplier_name"].tolist())
+            selected_supplier = st.selectbox(
+                "Select supplier",
+                suppliers["supplier_name"].tolist()
+            )
+
             row = suppliers[suppliers["supplier_name"] == selected_supplier].iloc[0]
 
             with st.form("edit_supplier_form"):
@@ -554,6 +631,7 @@ elif st.session_state.page == "Suppliers" and is_admin:
 
                 if save_supplier:
                     idx = suppliers[suppliers["supplier_name"] == selected_supplier].index[0]
+
                     suppliers.at[idx, "contact_name"] = contact_name
                     suppliers.at[idx, "email"] = email
                     suppliers.at[idx, "notes"] = notes
@@ -591,7 +669,11 @@ elif st.session_state.page == "Suppliers" and is_admin:
                         "updated_at": now_str(),
                     }
 
-                    suppliers = pd.concat([suppliers, pd.DataFrame([new_supplier])], ignore_index=True)
+                    suppliers = pd.concat(
+                        [suppliers, pd.DataFrame([new_supplier])],
+                        ignore_index=True
+                    )
+
                     write_csv("data/suppliers.csv", suppliers, f"Add supplier {supplier_name}")
                     st.success("Supplier added.")
                     st.rerun()
@@ -600,16 +682,17 @@ elif st.session_state.page == "Suppliers" and is_admin:
 elif st.session_state.page == "Users" and is_admin:
     st.subheader("Users")
 
-    st.info("Password wordt opgeslagen als SHA-256 hash. Voor wachtwoord 123 is de hash: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
-
     tab1, tab2 = st.tabs(["User List", "Add User"])
 
     with tab1:
-        st.dataframe(
-            users[["username", "role", "supplier_name", "active", "created_at", "updated_at"]],
-            use_container_width=True,
-            hide_index=True,
-        )
+        if users.empty:
+            st.info("No users yet.")
+        else:
+            st.dataframe(
+                users[["username", "role", "supplier_name", "active", "created_at", "updated_at"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
     with tab2:
         with st.form("add_user_form"):
@@ -640,7 +723,11 @@ elif st.session_state.page == "Users" and is_admin:
                         "updated_at": now_str(),
                     }
 
-                    users = pd.concat([users, pd.DataFrame([new_user])], ignore_index=True)
+                    users = pd.concat(
+                        [users, pd.DataFrame([new_user])],
+                        ignore_index=True
+                    )
+
                     write_csv("data/users.csv", users, f"Add user {username}")
                     st.success("User added.")
                     st.rerun()
