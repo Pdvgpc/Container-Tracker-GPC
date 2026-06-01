@@ -1,4 +1,4 @@
 user_id,username,password_sha256,role,supplier_name,active,created_at,updated_at
-admin,admin,a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3,admin,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
-iphandlers,iphandlers,a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3,handler,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
-richlink,richlink,a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3,supplier,Richlink,True,2026-01-01 00:00:00,2026-01-01 00:00:00
+admin,admin,034c38958a0e27f8bab4c3011d12e327f1e682e657f13103064498933f7ff51c,admin,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
+iphandlers,iphandlers,f15ca9050c99f7b026f1f861f8658825e998bdd1140ca83eddf9c9778a6f18a0,handler,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
+richlink,richlink,d6eabbc5f52b76cf3d513c621c58a179403b26091978ce77e166799e97e5c6ad,supplier,Richlink,True,2026-01-01 00:00:00,2026-01-01 00:00:00
