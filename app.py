@@ -517,7 +517,7 @@ if st.session_state.page == "Dashboard":
                 "arrival_week": st.column_config.SelectboxColumn("Arrival WK", options=week_options(), required=True),
                 "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
                 "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
-                "shipping_line": st.column_config.TextColumn("Shipper),
+                "shipping_line": st.column_config.TextColumn("Shipper"),
                 "bl_number": st.column_config.TextColumn("B/L No."),
                 "notes": st.column_config.TextColumn("Notes"),
             },
