@@ -52,7 +52,6 @@ st.markdown("""
     padding-bottom: 3rem;
     max-width: 1500px;
 }
-
 .top-shell {
     background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
     padding: 30px 30px;
@@ -343,27 +342,43 @@ if is_handler:
         st.rerun()
     st.session_state.page = "Dashboard"
 else:
-    nav_cols = st.columns([1.1, 1.1, 1.1, 1.1, 1.1, 2.2])
-
-    if nav_cols[0].button("Dashboard", use_container_width=True):
-        st.session_state.page = "Dashboard"
-
-    if nav_cols[1].button("Containers", use_container_width=True):
-        st.session_state.page = "Containers"
-
     if is_admin:
+        nav_cols = st.columns([1.1, 1.1, 1.1, 1.1, 1.1, 2.2])
+
+        if nav_cols[0].button("Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+
+        if nav_cols[1].button("Containers", use_container_width=True):
+            st.session_state.page = "Containers"
+
         if nav_cols[2].button("Suppliers", use_container_width=True):
             st.session_state.page = "Suppliers"
 
         if nav_cols[3].button("Users", use_container_width=True):
             st.session_state.page = "Users"
 
-    if nav_cols[4].button("Logs", use_container_width=True):
-        st.session_state.page = "Logs"
+        if nav_cols[4].button("Logs", use_container_width=True):
+            st.session_state.page = "Logs"
 
-    if nav_cols[5].button("🚪 Logout", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        if nav_cols[5].button("🚪 Logout", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
+    else:
+        nav_cols = st.columns([1.1, 1.1, 4, 1.5])
+
+        if nav_cols[0].button("Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+
+        if nav_cols[1].button("Containers", use_container_width=True):
+            st.session_state.page = "Containers"
+
+        if nav_cols[3].button("🚪 Logout", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
+        if st.session_state.page == "Logs":
+            st.session_state.page = "Dashboard"
 
 
 total = len(active_view)
@@ -493,10 +508,18 @@ if st.session_state.page == "Dashboard":
             disabled=["container_id", "container_number", "supplier"],
             column_config={
                 "container_id": None,
-                "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
+                "container_number": st.column_config.TextColumn("Container No."),
+                "invoice_number": st.column_config.TextColumn("Invoice No."),
+                "supplier": st.column_config.TextColumn("Supplier"),
+                "origin_port": st.column_config.TextColumn("Origin Port"),
+                "destination_port": st.column_config.TextColumn("Destination Port"),
                 "departure_week": st.column_config.SelectboxColumn("Departure Week", options=week_options(), required=True),
                 "arrival_week": st.column_config.SelectboxColumn("Arrival Week", options=week_options(), required=True),
                 "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
+                "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
+                "shipping_line": st.column_config.TextColumn("Shipping Line"),
+                "bl_number": st.column_config.TextColumn("B/L No."),
+                "notes": st.column_config.TextColumn("Notes"),
             },
             key="dashboard_editor",
         )
@@ -586,7 +609,23 @@ elif st.session_state.page == "Containers" and not is_handler:
         ].copy()
 
         table_df["status"] = table_df["status"].apply(status_icon)
-        st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+        st.dataframe(
+            table_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "container_number": "Container No.",
+                "invoice_number": "Invoice No.",
+                "origin_port": "Origin Port",
+                "destination_port": "Destination Port",
+                "departure_week": "Departure Week",
+                "arrival_week": "Arrival Week",
+                "eta_date": "ETA Date",
+                "shipping_line": "Shipping Line",
+                "bl_number": "B/L No.",
+            }
+        )
 
         st.divider()
         st.subheader("Edit Container")
@@ -855,16 +894,12 @@ elif st.session_state.page == "Users" and is_admin:
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-elif st.session_state.page == "Logs" and not is_handler:
+elif st.session_state.page == "Logs" and is_admin:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Container Logs</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Audit trail for container status changes and edits.</div>', unsafe_allow_html=True)
 
     logs = read_csv("data/container_logs.csv", LOG_COLUMNS)
-
-    if is_supplier:
-        allowed_ids = containers_view["container_id"].tolist()
-        logs = logs[logs["container_id"].isin(allowed_ids)]
 
     if logs.empty:
         st.info("No logs yet.")
