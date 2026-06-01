@@ -37,6 +37,168 @@ USER_COLUMNS = [
 ]
 
 
+# =========================
+# STYLING
+# =========================
+
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
+        color: #111827;
+    }
+
+    section[data-testid="stSidebar"] {
+        display: none;
+    }
+
+    .block-container {
+        padding-top: 1.4rem;
+        padding-bottom: 3rem;
+        max-width: 1500px;
+    }
+
+    .top-shell {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+        padding: 26px 30px;
+        border-radius: 22px;
+        color: white;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+        margin-bottom: 20px;
+    }
+
+    .app-title {
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        margin-bottom: 4px;
+    }
+
+    .app-subtitle {
+        font-size: 14px;
+        opacity: 0.82;
+    }
+
+    .user-pill {
+        display: inline-block;
+        background: rgba(255,255,255,0.13);
+        border: 1px solid rgba(255,255,255,0.25);
+        padding: 8px 13px;
+        border-radius: 999px;
+        font-size: 13px;
+        margin-top: 14px;
+    }
+
+    div.stButton > button {
+        border-radius: 999px;
+        border: 1px solid #d1d5db;
+        background: white;
+        color: #111827;
+        font-weight: 650;
+        height: 42px;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+    }
+
+    div.stButton > button:hover {
+        border-color: #2563eb;
+        color: #1d4ed8;
+        background: #eff6ff;
+    }
+
+    .metric-card {
+        background: white;
+        padding: 22px 22px;
+        border-radius: 20px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+    }
+
+    .metric-label {
+        color: #6b7280;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .metric-value {
+        margin-top: 8px;
+        font-size: 34px;
+        font-weight: 850;
+        color: #111827;
+        letter-spacing: -0.04em;
+    }
+
+    .section-card {
+        background: white;
+        border-radius: 22px;
+        padding: 24px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+        margin-top: 16px;
+    }
+
+    .section-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #111827;
+        letter-spacing: -0.03em;
+        margin-bottom: 4px;
+    }
+
+    .section-subtitle {
+        color: #6b7280;
+        font-size: 14px;
+        margin-bottom: 18px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 750;
+        border: 1px solid transparent;
+    }
+
+    .status-delayed { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+    .status-water { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+    .status-arrived { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+    .status-completed { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+    .status-default { background:#f3f4f6; color:#374151; border-color:#e5e7eb; }
+
+    div[data-testid="stDataFrame"] {
+        border-radius: 18px;
+        overflow: hidden;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background: #f3f4f6;
+        border-radius: 999px;
+        padding: 8px 18px;
+        font-weight: 700;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    input, textarea, select {
+        border-radius: 12px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# =========================
+# HELPERS
+# =========================
+
 def sha256_hash(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -53,6 +215,23 @@ def current_week_code():
 def week_options():
     year = date.today().year
     return [f"{y}-W{w:02d}" for y in range(year - 1, year + 3) for w in range(1, 54)]
+
+
+def status_icon(status):
+    icons = {
+        "Delayed": "🔴",
+        "On water": "🔵",
+        "Arrived at port": "🟠",
+        "Customs": "🟣",
+        "Released": "🟢",
+        "Delivered": "✅",
+        "Completed": "✅",
+        "Cancelled": "⚫",
+        "Planned": "⚪",
+        "Booked": "📘",
+        "Departed": "🚢",
+    }
+    return f"{icons.get(status, '⚪')} {status}"
 
 
 @st.cache_resource
@@ -113,6 +292,10 @@ def add_log(container_id, action, old_value="", new_value="", note=""):
     write_csv("data/container_logs.csv", logs, "Update container logs")
 
 
+# =========================
+# LOGIN
+# =========================
+
 def login():
     users = read_csv("data/users.csv", USER_COLUMNS)
 
@@ -122,32 +305,43 @@ def login():
     if st.session_state.logged_in:
         return True
 
-    st.title("Container Tracker GPC")
-    st.subheader("Login")
+    st.markdown("""
+    <div class="top-shell">
+        <div class="app-title">Container Tracker GPC</div>
+        <div class="app-subtitle">Secure container tracking portal</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    with st.container():
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Login</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Enter your username and password to continue.</div>', unsafe_allow_html=True)
 
-    if st.button("Login"):
-        match = users[
-            (users["username"] == username.strip())
-            & (users["active"].astype(str).str.lower() == "true")
-        ]
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
 
-        if match.empty:
-            st.error("Wrong username or password")
-            return False
+        if st.button("Login", use_container_width=True):
+            match = users[
+                (users["username"] == username.strip())
+                & (users["active"].astype(str).str.lower() == "true")
+            ]
 
-        user = match.iloc[0]
+            if match.empty:
+                st.error("Wrong username or password")
+                return False
 
-        if sha256_hash(password) == user["password_sha256"]:
-            st.session_state.logged_in = True
-            st.session_state.username = user["username"]
-            st.session_state.role = user["role"]
-            st.session_state.supplier_name = user["supplier_name"]
-            st.rerun()
-        else:
-            st.error("Wrong username or password")
+            user = match.iloc[0]
+
+            if sha256_hash(password) == user["password_sha256"]:
+                st.session_state.logged_in = True
+                st.session_state.username = user["username"]
+                st.session_state.role = user["role"]
+                st.session_state.supplier_name = user["supplier_name"]
+                st.rerun()
+            else:
+                st.error("Wrong username or password")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
     return False
 
@@ -155,6 +349,10 @@ def login():
 if not login():
     st.stop()
 
+
+# =========================
+# DATA
+# =========================
 
 containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
 suppliers = read_csv("data/suppliers.csv", SUPPLIER_COLUMNS)
@@ -179,12 +377,22 @@ supplier_options = suppliers[
 supplier_options = sorted([s for s in supplier_options if s])
 
 
-st.markdown("# Container Tracker GPC")
+# =========================
+# HEADER
+# =========================
 
-nav_cols = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 2])
+st.markdown(f"""
+<div class="top-shell">
+    <div class="app-title">Container Tracker GPC</div>
+    <div class="app-subtitle">Import container overview, ETA tracking and supplier portal</div>
+    <div class="user-pill">👤 {st.session_state.username} &nbsp; | &nbsp; Role: {st.session_state.role}</div>
+</div>
+""", unsafe_allow_html=True)
 
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
+
+nav_cols = st.columns([1.1, 1.1, 1.1, 1.1, 1.1, 2.2])
 
 if nav_cols[0].button("Dashboard", use_container_width=True):
     st.session_state.page = "Dashboard"
@@ -206,10 +414,10 @@ if nav_cols[5].button("🚪 Logout", use_container_width=True):
     st.session_state.clear()
     st.rerun()
 
-st.caption(f"👤 {st.session_state.username} | Role: {st.session_state.role}")
 
-st.divider()
-
+# =========================
+# KPI CARDS
+# =========================
 
 total = len(active_view)
 on_water = len(active_view[active_view["status"] == "On water"])
@@ -217,13 +425,43 @@ arriving_this_week = len(active_view[active_view["arrival_week"] == current_week
 delayed = len(active_view[active_view["status"] == "Delayed"])
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Active Containers", total)
-k2.metric("On Water", on_water)
-k3.metric("Arriving This Week", arriving_this_week)
-k4.metric("Delayed", delayed)
 
-st.divider()
+with k1:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Active Containers</div>
+        <div class="metric-value">{total}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
+with k2:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">On Water</div>
+        <div class="metric-value">{on_water}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with k3:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Arriving This Week</div>
+        <div class="metric-value">{arriving_this_week}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with k4:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">Delayed</div>
+        <div class="metric-value">{delayed}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# =========================
+# SAVE DASHBOARD EDITS
+# =========================
 
 def save_edited_containers(original_df, edited_df):
     global containers
@@ -232,7 +470,6 @@ def save_edited_containers(original_df, edited_df):
 
     for _, edited_row in edited_df.iterrows():
         cid = edited_row["container_id"]
-
         original_row = original_df[original_df["container_id"] == cid]
 
         if original_row.empty:
@@ -275,8 +512,14 @@ def save_edited_containers(original_df, edited_df):
         st.info("No changes detected.")
 
 
+# =========================
+# DASHBOARD
+# =========================
+
 if st.session_state.page == "Dashboard":
-    st.subheader("Active Containers")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Active Containers</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Live overview. Completed and cancelled containers are hidden automatically.</div>', unsafe_allow_html=True)
 
     f1, f2, f3, f4 = st.columns(4)
 
@@ -326,6 +569,10 @@ if st.session_state.page == "Dashboard":
             errors="coerce"
         ).dt.date
 
+        editor_df["status"] = editor_df["status"].apply(status_icon)
+
+        display_statuses = [status_icon(s) for s in STATUSES]
+
         edited = st.data_editor(
             editor_df,
             use_container_width=True,
@@ -335,7 +582,7 @@ if st.session_state.page == "Dashboard":
                 "container_id": None,
                 "status": st.column_config.SelectboxColumn(
                     "Status",
-                    options=STATUSES,
+                    options=display_statuses,
                     required=True
                 ),
                 "departure_week": st.column_config.SelectboxColumn(
@@ -356,13 +603,32 @@ if st.session_state.page == "Dashboard":
             key="dashboard_editor",
         )
 
-        if st.button("Save dashboard changes"):
+        edited["status"] = edited["status"].str.replace("🔴 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("🔵 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("🟠 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("🟣 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("🟢 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("✅ ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("⚫ ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("⚪ ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("📘 ", "", regex=False)
+        edited["status"] = edited["status"].str.replace("🚢 ", "", regex=False)
+
+        if st.button("Save dashboard changes", use_container_width=True):
             original_df = dashboard_df[editable_cols].copy()
             save_edited_containers(original_df, edited)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================
+# CONTAINERS
+# =========================
 
 elif st.session_state.page == "Containers":
-    st.subheader("Containers")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Containers</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Create, review and update import containers.</div>', unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["Overview / Edit", "Add Container"])
 
@@ -394,18 +660,18 @@ elif st.session_state.page == "Containers":
             ascending=(sort_order == "Ascending")
         )
 
-        st.dataframe(
-            filtered[
-                [
-                    "container_number", "invoice_number", "supplier",
-                    "origin_port", "destination_port", "departure_week",
-                    "arrival_week", "eta_date", "status",
-                    "shipping_line", "bl_number", "notes"
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
+        table_df = filtered[
+            [
+                "container_number", "invoice_number", "supplier",
+                "origin_port", "destination_port", "departure_week",
+                "arrival_week", "eta_date", "status",
+                "shipping_line", "bl_number", "notes"
+            ]
+        ].copy()
+
+        table_df["status"] = table_df["status"].apply(status_icon)
+
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
 
         st.divider()
         st.subheader("Edit Container")
@@ -513,8 +779,6 @@ elif st.session_state.page == "Containers":
                         st.rerun()
 
     with tab2:
-        st.subheader("Add Container")
-
         with st.form("add_container_form"):
             c1, c2, c3 = st.columns(3)
 
@@ -536,18 +800,8 @@ elif st.session_state.page == "Containers":
             c7, c8, c9 = st.columns(3)
 
             weeks = week_options()
-            departure_week = c7.selectbox(
-                "Departure Week",
-                weeks,
-                index=weeks.index(current_week_code())
-            )
-
-            arrival_week = c8.selectbox(
-                "Arrival Week",
-                weeks,
-                index=weeks.index(current_week_code())
-            )
-
+            departure_week = c7.selectbox("Departure Week", weeks, index=weeks.index(current_week_code()))
+            arrival_week = c8.selectbox("Arrival Week", weeks, index=weeks.index(current_week_code()))
             eta_date = c9.date_input("ETA Date", value=date.today())
 
             status = st.selectbox("Status", STATUSES)
@@ -584,10 +838,7 @@ elif st.session_state.page == "Containers":
                         "updated_at": now_str(),
                     }
 
-                    containers = pd.concat(
-                        [containers, pd.DataFrame([new_row])],
-                        ignore_index=True
-                    )
+                    containers = pd.concat([containers, pd.DataFrame([new_row])], ignore_index=True)
 
                     write_csv("data/containers.csv", containers, f"Add container {container_number}")
                     add_log(container_id, "Container created", "", container_number)
@@ -595,9 +846,17 @@ elif st.session_state.page == "Containers":
                     st.success("Container added.")
                     st.rerun()
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================
+# SUPPLIERS
+# =========================
 
 elif st.session_state.page == "Suppliers" and is_admin:
-    st.subheader("Suppliers")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Suppliers</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Manage suppliers used for portal access and container filtering.</div>', unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["Supplier List", "Add Supplier"])
 
@@ -669,18 +928,23 @@ elif st.session_state.page == "Suppliers" and is_admin:
                         "updated_at": now_str(),
                     }
 
-                    suppliers = pd.concat(
-                        [suppliers, pd.DataFrame([new_supplier])],
-                        ignore_index=True
-                    )
+                    suppliers = pd.concat([suppliers, pd.DataFrame([new_supplier])], ignore_index=True)
 
                     write_csv("data/suppliers.csv", suppliers, f"Add supplier {supplier_name}")
                     st.success("Supplier added.")
                     st.rerun()
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================
+# USERS
+# =========================
 
 elif st.session_state.page == "Users" and is_admin:
-    st.subheader("Users")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Users</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Create admin users or supplier portal users.</div>', unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["User List", "Add User"])
 
@@ -723,18 +987,23 @@ elif st.session_state.page == "Users" and is_admin:
                         "updated_at": now_str(),
                     }
 
-                    users = pd.concat(
-                        [users, pd.DataFrame([new_user])],
-                        ignore_index=True
-                    )
+                    users = pd.concat([users, pd.DataFrame([new_user])], ignore_index=True)
 
                     write_csv("data/users.csv", users, f"Add user {username}")
                     st.success("User added.")
                     st.rerun()
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================
+# LOGS
+# =========================
 
 elif st.session_state.page == "Logs":
-    st.subheader("Container Logs")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Container Logs</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Audit trail for container status changes and edits.</div>', unsafe_allow_html=True)
 
     logs = read_csv("data/container_logs.csv", LOG_COLUMNS)
 
@@ -750,3 +1019,5 @@ elif st.session_state.page == "Logs":
             use_container_width=True,
             hide_index=True,
         )
+
+    st.markdown('</div>', unsafe_allow_html=True)
