@@ -1,1 +1,1 @@
-container_id,container_number,supplier,origin_port,destination_port,departure_week,arrival_week,status,shipping_line,bl_number,notes,created_at,updated_at
+container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,created_at,updated_at
