@@ -1,2 +1,2 @@
 container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,created_at,updated_at
-5f5652bf-2668-4a99-8ad9-9ce3e6e9927c,132,132,Richlink,Xiamen,AMS,2026-W23,2026-W23,2026-06-01,Planned,,,,2026-06-01 10:22:08,2026-06-01 10:22:08
+5f5652bf-2668-4a99-8ad9-9ce3e6e9927c,132,132,Richlink,Xiamen,AMS,2026-W23,2026-W23,2026-06-01,Booked,,,,2026-06-01 10:22:08,2026-06-01 10:39:04
