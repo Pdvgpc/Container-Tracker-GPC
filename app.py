@@ -31,6 +31,11 @@ LOG_COLUMNS = [
     "new_value", "note", "created_at"
 ]
 
+USER_COLUMNS = [
+    "user_id", "username", "password_sha256", "role",
+    "supplier_name", "active", "created_at", "updated_at"
+]
+
 
 def sha256_hash(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -48,32 +53,6 @@ def current_week_code():
 def week_options():
     year = date.today().year
     return [f"{y}-W{w:02d}" for y in range(year - 1, year + 3) for w in range(1, 54)]
-
-
-def check_login():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-
-    if st.session_state.logged_in:
-        return True
-
-    st.title("Container Tracker GPC")
-    st.subheader("Login")
-
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if sha256_hash(password) == st.secrets.get("APP_PASSWORD_SHA256", ""):
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Wrong password")
-
-    return False
-
-
-if not check_login():
-    st.stop()
 
 
 @st.cache_resource
@@ -128,69 +107,213 @@ def add_log(container_id, action, old_value="", new_value="", note=""):
     write_csv("data/container_logs.csv", logs, "Update container logs")
 
 
+def login():
+    users = read_csv("data/users.csv", USER_COLUMNS)
+
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+
+    if st.session_state.logged_in:
+        return True
+
+    st.title("Container Tracker GPC")
+    st.subheader("Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        match = users[
+            (users["username"] == username.strip())
+            & (users["active"].astype(str).str.lower() == "true")
+        ]
+
+        if match.empty:
+            st.error("Wrong username or password")
+            return False
+
+        user = match.iloc[0]
+
+        if sha256_hash(password) == user["password_sha256"]:
+            st.session_state.logged_in = True
+            st.session_state.username = user["username"]
+            st.session_state.role = user["role"]
+            st.session_state.supplier_name = user["supplier_name"]
+            st.rerun()
+        else:
+            st.error("Wrong username or password")
+
+    return False
+
+
+if not login():
+    st.stop()
+
+
 containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
 suppliers = read_csv("data/suppliers.csv", SUPPLIER_COLUMNS)
+users = read_csv("data/users.csv", USER_COLUMNS)
 
-st.markdown("# Container Tracker GPC")
+is_admin = st.session_state.role == "admin"
+user_supplier = st.session_state.supplier_name
 
-nav1, nav2, nav3, nav4, nav5 = st.columns([1.2, 1.2, 1.2, 1.2, 4])
+if not is_admin:
+    containers_view = containers[containers["supplier"] == user_supplier].copy()
+else:
+    containers_view = containers.copy()
 
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
-
-if nav1.button("Dashboard", use_container_width=True):
-    st.session_state.page = "Dashboard"
-if nav2.button("Containers", use_container_width=True):
-    st.session_state.page = "Containers"
-if nav3.button("Suppliers", use_container_width=True):
-    st.session_state.page = "Suppliers"
-if nav4.button("Logs", use_container_width=True):
-    st.session_state.page = "Logs"
-if nav5.button("Logout", use_container_width=False):
-    st.session_state.logged_in = False
-    st.rerun()
-
-st.divider()
-
-total = len(containers)
-on_water = len(containers[containers["status"] == "On water"])
-arriving_this_week = len(containers[containers["arrival_week"] == current_week_code()])
-delayed = len(containers[containers["status"] == "Delayed"])
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total Containers", total)
-k2.metric("On Water", on_water)
-k3.metric("Arriving This Week", arriving_this_week)
-k4.metric("Delayed", delayed)
-
-st.divider()
+active_view = containers_view[~containers_view["status"].isin(["Completed", "Cancelled"])].copy()
 
 supplier_options = suppliers[
     suppliers["active"].astype(str).str.lower() != "false"
 ]["supplier_name"].tolist()
 supplier_options = sorted([s for s in supplier_options if s])
 
+st.markdown("# Container Tracker GPC")
+
+nav_cols = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 4])
+
+if "page" not in st.session_state:
+    st.session_state.page = "Dashboard"
+
+if nav_cols[0].button("Dashboard", use_container_width=True):
+    st.session_state.page = "Dashboard"
+
+if nav_cols[1].button("Containers", use_container_width=True):
+    st.session_state.page = "Containers"
+
+if is_admin:
+    if nav_cols[2].button("Suppliers", use_container_width=True):
+        st.session_state.page = "Suppliers"
+
+    if nav_cols[3].button("Users", use_container_width=True):
+        st.session_state.page = "Users"
+
+if nav_cols[4].button("Logs", use_container_width=True):
+    st.session_state.page = "Logs"
+
+if nav_cols[5].button("Logout"):
+    st.session_state.clear()
+    st.rerun()
+
+st.caption(f"Logged in as: {st.session_state.username} | Role: {st.session_state.role}")
+
+st.divider()
+
+total = len(active_view)
+on_water = len(active_view[active_view["status"] == "On water"])
+arriving_this_week = len(active_view[active_view["arrival_week"] == current_week_code()])
+delayed = len(active_view[active_view["status"] == "Delayed"])
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Active Containers", total)
+k2.metric("On Water", on_water)
+k3.metric("Arriving This Week", arriving_this_week)
+k4.metric("Delayed", delayed)
+
+st.divider()
+
+
+def save_edited_containers(original_df, edited_df):
+    global containers
+
+    changes = 0
+
+    for _, edited_row in edited_df.iterrows():
+        cid = edited_row["container_id"]
+        original_row = original_df[original_df["container_id"] == cid]
+
+        if original_row.empty:
+            continue
+
+        original_row = original_row.iloc[0]
+        main_idx = containers[containers["container_id"] == cid].index
+
+        if len(main_idx) == 0:
+            continue
+
+        main_idx = main_idx[0]
+
+        for col in [
+            "invoice_number", "origin_port", "destination_port",
+            "departure_week", "arrival_week", "eta_date", "status",
+            "shipping_line", "bl_number", "notes"
+        ]:
+            old = str(original_row[col])
+            new = str(edited_row[col])
+
+            if old != new:
+                containers.at[main_idx, col] = new
+                containers.at[main_idx, "updated_at"] = now_str()
+                changes += 1
+
+                if col == "status":
+                    add_log(cid, "Status changed", old, new)
+
+    if changes > 0:
+        write_csv("data/containers.csv", containers, "Update containers from dashboard")
+        st.success("Changes saved.")
+        st.rerun()
+    else:
+        st.info("No changes detected.")
+
 
 if st.session_state.page == "Dashboard":
     st.subheader("Active Containers")
 
-    active = containers[~containers["status"].isin(["Completed", "Cancelled"])].copy()
+    f1, f2, f3, f4 = st.columns(4)
 
-    if active.empty:
-        st.info("No active containers yet.")
+    search = f1.text_input("Search")
+    status_filter = f2.selectbox("Status", ["All"] + STATUSES)
+    week_sort = f3.selectbox("Sort arrival week", ["Ascending", "Descending"])
+    supplier_filter = f4.selectbox("Supplier", ["All"] + supplier_options) if is_admin else user_supplier
+
+    dashboard_df = active_view.copy()
+
+    if search:
+        dashboard_df = dashboard_df[
+            dashboard_df["container_number"].str.contains(search, case=False, na=False)
+            | dashboard_df["invoice_number"].str.contains(search, case=False, na=False)
+            | dashboard_df["bl_number"].str.contains(search, case=False, na=False)
+        ]
+
+    if status_filter != "All":
+        dashboard_df = dashboard_df[dashboard_df["status"] == status_filter]
+
+    if is_admin and supplier_filter != "All":
+        dashboard_df = dashboard_df[dashboard_df["supplier"] == supplier_filter]
+
+    dashboard_df = dashboard_df.sort_values(
+        by=["arrival_week", "eta_date"],
+        ascending=(week_sort == "Ascending")
+    )
+
+    if dashboard_df.empty:
+        st.info("No active containers.")
     else:
-        st.dataframe(
-            active[
-                [
-                    "container_number", "invoice_number", "supplier",
-                    "origin_port", "destination_port", "departure_week",
-                    "arrival_week", "eta_date", "status",
-                    "shipping_line", "bl_number", "notes"
-                ]
-            ],
+        editable_cols = [
+            "container_id", "container_number", "invoice_number", "supplier",
+            "origin_port", "destination_port", "departure_week", "arrival_week",
+            "eta_date", "status", "shipping_line", "bl_number", "notes"
+        ]
+
+        edited = st.data_editor(
+            dashboard_df[editable_cols],
             use_container_width=True,
             hide_index=True,
+            disabled=["container_id", "container_number", "supplier"],
+            column_config={
+                "status": st.column_config.SelectboxColumn("Status", options=STATUSES),
+                "departure_week": st.column_config.SelectboxColumn("Departure Week", options=week_options()),
+                "arrival_week": st.column_config.SelectboxColumn("Arrival Week", options=week_options()),
+                "eta_date": st.column_config.DateColumn("ETA Date"),
+                "container_id": None,
+            },
+            key="dashboard_editor",
         )
+
+        if st.button("Save dashboard changes"):
+            save_edited_containers(dashboard_df[editable_cols], edited)
 
 
 elif st.session_state.page == "Containers":
@@ -203,10 +326,10 @@ elif st.session_state.page == "Containers":
 
         search = f1.text_input("Search container / invoice / B/L")
         status_filter = f2.selectbox("Status", ["All"] + STATUSES)
-        supplier_filter = f3.selectbox("Supplier", ["All"] + supplier_options)
-        arrival_filter = f4.selectbox("Arrival Week", ["All"] + week_options())
+        arrival_filter = f3.selectbox("Arrival Week", ["All"] + week_options())
+        sort_order = f4.selectbox("Sort arrival week", ["Ascending", "Descending"])
 
-        filtered = containers.copy()
+        filtered = containers_view.copy()
 
         if search:
             filtered = filtered[
@@ -218,11 +341,13 @@ elif st.session_state.page == "Containers":
         if status_filter != "All":
             filtered = filtered[filtered["status"] == status_filter]
 
-        if supplier_filter != "All":
-            filtered = filtered[filtered["supplier"] == supplier_filter]
-
         if arrival_filter != "All":
             filtered = filtered[filtered["arrival_week"] == arrival_filter]
+
+        filtered = filtered.sort_values(
+            by=["arrival_week", "eta_date"],
+            ascending=(sort_order == "Ascending")
+        )
 
         st.dataframe(
             filtered[
@@ -240,24 +365,31 @@ elif st.session_state.page == "Containers":
         st.divider()
         st.subheader("Edit Container")
 
-        if containers.empty:
+        if containers_view.empty:
             st.info("No containers to edit.")
         else:
             selected_container = st.selectbox(
                 "Select container",
-                containers["container_number"].tolist(),
+                containers_view["container_number"].tolist(),
             )
 
-            row = containers[containers["container_number"] == selected_container].iloc[0]
+            row = containers_view[containers_view["container_number"] == selected_container].iloc[0]
 
             with st.form("edit_container_form"):
                 c1, c2, c3 = st.columns(3)
+
                 invoice_number = c1.text_input("Invoice Number", value=row["invoice_number"])
-                supplier = c2.selectbox(
-                    "Supplier",
-                    supplier_options if supplier_options else [row["supplier"]],
-                    index=supplier_options.index(row["supplier"]) if row["supplier"] in supplier_options else 0,
-                )
+
+                if is_admin:
+                    supplier = c2.selectbox(
+                        "Supplier",
+                        supplier_options if supplier_options else [row["supplier"]],
+                        index=supplier_options.index(row["supplier"]) if row["supplier"] in supplier_options else 0,
+                    )
+                else:
+                    supplier = row["supplier"]
+                    c2.text_input("Supplier", value=supplier, disabled=True)
+
                 status = c3.selectbox(
                     "Status",
                     STATUSES,
@@ -293,7 +425,7 @@ elif st.session_state.page == "Containers":
                 save = st.form_submit_button("Save Changes")
 
                 if save:
-                    idx = containers[containers["container_number"] == selected_container].index[0]
+                    idx = containers[containers["container_id"] == row["container_id"]].index[0]
                     old_status = containers.at[idx, "status"]
 
                     containers.at[idx, "invoice_number"] = invoice_number
@@ -317,13 +449,14 @@ elif st.session_state.page == "Containers":
                     st.success("Container updated.")
                     st.rerun()
 
-            with st.expander("Danger zone"):
-                if st.button("Delete selected container"):
-                    containers = containers[containers["container_number"] != selected_container]
-                    write_csv("data/containers.csv", containers, f"Delete container {selected_container}")
-                    add_log(row["container_id"], "Container deleted", selected_container, "")
-                    st.success("Container deleted.")
-                    st.rerun()
+            if is_admin:
+                with st.expander("Danger zone"):
+                    if st.button("Delete selected container"):
+                        containers = containers[containers["container_id"] != row["container_id"]]
+                        write_csv("data/containers.csv", containers, f"Delete container {selected_container}")
+                        add_log(row["container_id"], "Container deleted", selected_container, "")
+                        st.success("Container deleted.")
+                        st.rerun()
 
     with tab2:
         st.subheader("Add Container")
@@ -332,7 +465,12 @@ elif st.session_state.page == "Containers":
             c1, c2, c3 = st.columns(3)
             container_number = c1.text_input("Container Number")
             invoice_number = c2.text_input("Invoice Number")
-            supplier = c3.selectbox("Supplier", supplier_options if supplier_options else [""])
+
+            if is_admin:
+                supplier = c3.selectbox("Supplier", supplier_options if supplier_options else [""])
+            else:
+                supplier = user_supplier
+                c3.text_input("Supplier", value=supplier, disabled=True)
 
             c4, c5, c6 = st.columns(3)
             origin_port = c4.text_input("Origin Port")
@@ -385,7 +523,7 @@ elif st.session_state.page == "Containers":
                     st.rerun()
 
 
-elif st.session_state.page == "Suppliers":
+elif st.session_state.page == "Suppliers" and is_admin:
     st.subheader("Suppliers")
 
     tab1, tab2 = st.tabs(["Supplier List", "Add Supplier"])
@@ -459,10 +597,63 @@ elif st.session_state.page == "Suppliers":
                     st.rerun()
 
 
+elif st.session_state.page == "Users" and is_admin:
+    st.subheader("Users")
+
+    st.info("Password wordt opgeslagen als SHA-256 hash. Voor wachtwoord 123 is de hash: a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
+
+    tab1, tab2 = st.tabs(["User List", "Add User"])
+
+    with tab1:
+        st.dataframe(
+            users[["username", "role", "supplier_name", "active", "created_at", "updated_at"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab2:
+        with st.form("add_user_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Temporary Password", type="password")
+            role = st.selectbox("Role", ["admin", "supplier"])
+            supplier_name = st.selectbox("Supplier", [""] + supplier_options)
+            active = st.checkbox("Active", value=True)
+
+            add_user = st.form_submit_button("Add User")
+
+            if add_user:
+                if not username.strip() or not password:
+                    st.error("Username and password are required.")
+                elif username.strip() in users["username"].tolist():
+                    st.error("Username already exists.")
+                elif role == "supplier" and not supplier_name:
+                    st.error("Supplier user must be linked to a supplier.")
+                else:
+                    new_user = {
+                        "user_id": str(uuid.uuid4()),
+                        "username": username.strip(),
+                        "password_sha256": sha256_hash(password),
+                        "role": role,
+                        "supplier_name": supplier_name,
+                        "active": str(active),
+                        "created_at": now_str(),
+                        "updated_at": now_str(),
+                    }
+
+                    users = pd.concat([users, pd.DataFrame([new_user])], ignore_index=True)
+                    write_csv("data/users.csv", users, f"Add user {username}")
+                    st.success("User added.")
+                    st.rerun()
+
+
 elif st.session_state.page == "Logs":
     st.subheader("Container Logs")
 
     logs = read_csv("data/container_logs.csv", LOG_COLUMNS)
+
+    if not is_admin:
+        allowed_ids = containers_view["container_id"].tolist()
+        logs = logs[logs["container_id"].isin(allowed_ids)]
 
     if logs.empty:
         st.info("No logs yet.")
