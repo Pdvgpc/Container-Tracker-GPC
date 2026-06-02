@@ -1,1 +1,4 @@
 container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,shipping_cost,created_at,updated_at
+10b67154-1c12-4404-8d3b-43b91c664523,YMLU5455243,YL-260339,Richlink,Xiamen,Rotterdam,2026-W18,2026-W24,2026-06-13,On water,,00311859A,"SANSEVIERIA LAURENTII H30-40CM/ 3800 POTS/ 2 WOODEN CASES
+SANSEVIERIA LAURENTII H50-60CM/ 79200 POTS/ 6 WOODEN CASES
+Client No.: 7050",,2026-06-02 08:00:25,2026-06-02 08:00:25
