@@ -586,7 +586,7 @@ if st.session_state.page == "Dashboard":
             st.success("Details saved.")
             st.rerun()
 
-        if is_admin:
+        if is_admin or is_supplier:
             st.divider()
             st.subheader("Delete container")
 
