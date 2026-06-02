@@ -23,7 +23,7 @@ CONTAINER_COLUMNS = [
     "container_id", "container_number", "invoice_number", "supplier",
     "origin_port", "destination_port", "departure_week", "arrival_week",
     "eta_date", "status", "shipping_line", "bl_number", "notes",
-    "created_at", "updated_at"
+    "shipping_cost", "created_at", "updated_at"
 ]
 
 SUPPLIER_COLUMNS = [
@@ -196,6 +196,18 @@ def clean_status(value):
     for icon in ["🔴 ", "🔵 ", "🟠 ", "🟣 ", "🟢 ", "✅ ", "⚫ ", "⚪ ", "📘 ", "🚢 "]:
         value = value.replace(icon, "")
     return value
+
+
+def container_label(row):
+    container_no = str(row.get("container_number", "")).strip() or "PENDING"
+    invoice_no = str(row.get("invoice_number", "")).strip()
+    supplier = str(row.get("supplier", "")).strip()
+    parts = [container_no]
+    if invoice_no:
+        parts.append(f"Inv: {invoice_no}")
+    if supplier:
+        parts.append(supplier)
+    return " | ".join(parts)
 
 
 @st.cache_resource
@@ -419,9 +431,9 @@ def save_edited_containers(original_df, edited_df):
         main_idx = main_idx[0]
 
         editable_columns = [
-            "invoice_number", "origin_port", "destination_port",
+            "container_number", "invoice_number", "origin_port", "destination_port",
             "departure_week", "arrival_week", "eta_date", "status",
-            "shipping_line", "bl_number", "notes"
+            "shipping_line", "bl_number"
         ]
 
         for col in editable_columns:
@@ -493,7 +505,7 @@ if st.session_state.page == "Dashboard":
         editable_cols = [
             "container_id", "container_number", "invoice_number", "supplier",
             "origin_port", "destination_port", "departure_week", "arrival_week",
-            "eta_date", "status", "shipping_line", "bl_number", "notes"
+            "eta_date", "status", "shipping_line", "bl_number"
         ]
 
         editor_df = dashboard_df[editable_cols].copy()
@@ -505,7 +517,7 @@ if st.session_state.page == "Dashboard":
             editor_df,
             use_container_width=True,
             hide_index=True,
-            disabled=["container_id", "container_number", "supplier"],
+            disabled=["container_id", "supplier"],
             column_config={
                 "container_id": None,
                 "container_number": st.column_config.TextColumn("Cont No."),
@@ -519,7 +531,6 @@ if st.session_state.page == "Dashboard":
                 "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
                 "shipping_line": st.column_config.TextColumn("Shipper"),
                 "bl_number": st.column_config.TextColumn("B/L No."),
-                "notes": st.column_config.TextColumn("Notes"),
             },
             key="dashboard_editor",
         )
@@ -529,6 +540,51 @@ if st.session_state.page == "Dashboard":
         if st.button("Save dashboard changes", use_container_width=True):
             original_df = dashboard_df[editable_cols].copy()
             save_edited_containers(original_df, edited)
+
+        st.divider()
+        st.subheader("Open container details")
+
+        detail_options = dashboard_df.apply(container_label, axis=1).tolist()
+        detail_map = dict(zip(detail_options, dashboard_df["container_id"].tolist()))
+
+        selected_detail = st.selectbox(
+            "Select container",
+            detail_options,
+            key="dashboard_detail_select"
+        )
+
+        detail_id = detail_map[selected_detail]
+        detail_row = containers[containers["container_id"] == detail_id].iloc[0]
+
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.markdown("#### Notes")
+            detail_notes = st.text_area(
+                "Notes",
+                value=detail_row.get("notes", ""),
+                height=180,
+                key=f"notes_{detail_id}"
+            )
+
+        with d2:
+            st.markdown("#### Shipping Cost")
+            detail_shipping_cost = st.text_input(
+                "Shipping Cost",
+                value=detail_row.get("shipping_cost", ""),
+                key=f"shipping_cost_{detail_id}"
+            )
+
+        if st.button("Save details", use_container_width=True):
+            idx = containers[containers["container_id"] == detail_id].index[0]
+            containers.at[idx, "notes"] = detail_notes.strip()
+            containers.at[idx, "shipping_cost"] = detail_shipping_cost.strip()
+            containers.at[idx, "updated_at"] = now_str()
+
+            write_csv("data/containers.csv", containers, f"Update details {detail_row.get('container_number', '')}")
+            add_log(detail_id, "Details updated", "", "", "Notes / shipping cost updated")
+            st.success("Details saved.")
+            st.rerun()
 
         if is_admin:
             st.divider()
@@ -689,6 +745,7 @@ elif st.session_state.page == "Containers" and not is_handler:
 
                 eta_date = c9.date_input("ETA Date", value=eta_value)
                 bl_number = st.text_input("B/L Number", value=row["bl_number"])
+                shipping_cost = st.text_input("Shipping Cost", value=row.get("shipping_cost", ""))
                 notes = st.text_area("Notes", value=row["notes"])
 
                 save = st.form_submit_button("Save Changes")
@@ -708,6 +765,7 @@ elif st.session_state.page == "Containers" and not is_handler:
                     containers.at[idx, "shipping_line"] = shipping_line
                     containers.at[idx, "bl_number"] = bl_number
                     containers.at[idx, "notes"] = notes
+                    containers.at[idx, "shipping_cost"] = shipping_cost
                     containers.at[idx, "updated_at"] = now_str()
 
                     write_csv("data/containers.csv", containers, f"Update container {selected_container}")
@@ -746,14 +804,18 @@ elif st.session_state.page == "Containers" and not is_handler:
 
             status = st.selectbox("Status", STATUSES)
             bl_number = st.text_input("B/L Number")
+            shipping_cost = st.text_input("Shipping Cost")
             notes = st.text_area("Notes")
 
             add = st.form_submit_button("Add Container")
 
             if add:
-                if not container_number.strip():
-                    st.error("Container Number is required.")
-                elif container_number.strip() in containers["container_number"].tolist():
+                clean_container_number = container_number.strip() if container_number.strip() else "PENDING"
+
+                if (
+                    clean_container_number != "PENDING"
+                    and clean_container_number in containers["container_number"].tolist()
+                ):
                     st.error("Container Number already exists.")
                 elif not supplier:
                     st.error("Supplier is required.")
@@ -762,7 +824,7 @@ elif st.session_state.page == "Containers" and not is_handler:
 
                     new_row = {
                         "container_id": container_id,
-                        "container_number": container_number.strip(),
+                        "container_number": clean_container_number,
                         "invoice_number": invoice_number.strip(),
                         "supplier": supplier,
                         "origin_port": origin_port.strip(),
@@ -774,14 +836,15 @@ elif st.session_state.page == "Containers" and not is_handler:
                         "shipping_line": shipping_line.strip(),
                         "bl_number": bl_number.strip(),
                         "notes": notes.strip(),
+                        "shipping_cost": shipping_cost.strip(),
                         "created_at": now_str(),
                         "updated_at": now_str(),
                     }
 
                     containers = pd.concat([containers, pd.DataFrame([new_row])], ignore_index=True)
 
-                    write_csv("data/containers.csv", containers, f"Add container {container_number}")
-                    add_log(container_id, "Container created", "", container_number)
+                    write_csv("data/containers.csv", containers, f"Add container {clean_container_number}")
+                    add_log(container_id, "Container created", "", clean_container_number)
 
                     st.success("Container added.")
                     st.rerun()
