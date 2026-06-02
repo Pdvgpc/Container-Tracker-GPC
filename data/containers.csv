@@ -1,1 +1,2 @@
 container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,created_at,updated_at
+14bc7171-15db-4472-9731-631913e911d0,PENDING,YL-260428A,Richlink,XIamen,Rotterdam,2026-W23,2026-W27,2026-06-29,Planned,,,,2026-06-02 07:17:36,2026-06-02 07:17:36
