@@ -590,7 +590,7 @@ if st.session_state.page == "Dashboard":
             st.divider()
             st.subheader("Delete container")
 
-                       delete_rows = dashboard_df.reset_index(drop=True)
+            delete_rows = dashboard_df.reset_index(drop=True)
 
             selected_delete_idx = st.selectbox(
                 "Select invoice to delete",
