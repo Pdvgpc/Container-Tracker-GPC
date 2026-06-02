@@ -590,35 +590,35 @@ if st.session_state.page == "Dashboard":
             st.divider()
             st.subheader("Delete container")
 
-            delete_container = st.selectbox(
-                "Select container to delete",
-                dashboard_df["container_number"].tolist(),
+                       delete_rows = dashboard_df.reset_index(drop=True)
+
+            selected_delete_idx = st.selectbox(
+                "Select invoice to delete",
+                options=list(delete_rows.index),
+                format_func=lambda i: (
+                    f"{delete_rows.loc[i]['invoice_number']} | "
+                    f"{delete_rows.loc[i]['supplier']}"
+                ),
                 key="dashboard_delete_select"
             )
 
-            confirm_delete = st.checkbox(
-                f"I confirm deleting container {delete_container}",
-                key="dashboard_delete_confirm"
+            selected_row = delete_rows.loc[selected_delete_idx]
+            delete_label = (
+                f"{selected_row['invoice_number']} | "
+                f"{selected_row['supplier']}"
             )
 
             if st.button("Delete selected container", use_container_width=True):
-                if not confirm_delete:
-                    st.error("Please confirm before deleting.")
-                else:
-                    selected_row = dashboard_df[
-                        dashboard_df["container_number"] == delete_container
-                    ].iloc[0]
+                containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
+                containers = containers[
+                    containers["container_id"] != selected_row["container_id"]
+                ]
 
-                    containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
-                    containers = containers[
-                        containers["container_id"] != selected_row["container_id"]
-                    ]
+                write_csv("data/containers.csv", containers, f"Delete container {delete_label}")
+                add_log(selected_row["container_id"], "Container deleted", delete_label, "")
 
-                    write_csv("data/containers.csv", containers, f"Delete container {delete_container}")
-                    add_log(selected_row["container_id"], "Container deleted", delete_container, "")
-
-                    st.success("Container deleted.")
-                    st.rerun()
+                st.success("Container deleted.")
+                st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
