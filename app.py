@@ -41,6 +41,16 @@ USER_COLUMNS = [
     "supplier_name", "active", "created_at", "updated_at"
 ]
 
+REQUEST_COLUMNS = [
+    "request_id", "supplier", "article", "quantity",
+    "arrival_week_nl", "status", "created_by", "created_at", "updated_at"
+]
+
+REQUEST_STATUSES = [
+    "Pending", "Confirmed", "Not Available",
+    "Alternative Offered", "Completed"
+]
+
 st.markdown("""
 <style>
 .stApp {
@@ -314,6 +324,7 @@ if not login():
 containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
 suppliers = read_csv("data/suppliers.csv", SUPPLIER_COLUMNS)
 users = read_csv("data/users.csv", USER_COLUMNS)
+requests = read_csv("data/requests.csv", REQUEST_COLUMNS)
 
 role = st.session_state.role
 is_admin = role == "admin"
@@ -323,8 +334,10 @@ user_supplier = st.session_state.supplier_name
 
 if is_supplier:
     containers_view = containers[containers["supplier"] == user_supplier].copy()
+    requests_view = requests[requests["supplier"] == user_supplier].copy()
 else:
     containers_view = containers.copy()
+    requests_view = requests.copy()
 
 active_view = containers_view[~containers_view["status"].isin(["Completed", "Cancelled"])].copy()
 
@@ -363,14 +376,14 @@ else:
         if nav_cols[1].button("Containers", use_container_width=True):
             st.session_state.page = "Containers"
 
-        if nav_cols[2].button("Suppliers", use_container_width=True):
+        if nav_cols[2].button("Requests", use_container_width=True):
+            st.session_state.page = "Requests"
+
+        if nav_cols[3].button("Suppliers", use_container_width=True):
             st.session_state.page = "Suppliers"
 
-        if nav_cols[3].button("Users", use_container_width=True):
+        if nav_cols[4].button("Users", use_container_width=True):
             st.session_state.page = "Users"
-
-        if nav_cols[4].button("Logs", use_container_width=True):
-            st.session_state.page = "Logs"
 
         if nav_cols[5].button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
@@ -385,11 +398,14 @@ else:
         if nav_cols[1].button("Containers", use_container_width=True):
             st.session_state.page = "Containers"
 
+        if nav_cols[2].button("Requests", use_container_width=True):
+            st.session_state.page = "Requests"
+
         if nav_cols[3].button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-        if st.session_state.page == "Logs":
+        if st.session_state.page in ["Logs", "Suppliers", "Users"]:
             st.session_state.page = "Dashboard"
 
 
@@ -586,39 +602,39 @@ if st.session_state.page == "Dashboard":
             st.success("Details saved.")
             st.rerun()
 
-        if is_admin or is_supplier:
+        if is_admin:
             st.divider()
             st.subheader("Delete container")
 
-            delete_rows = dashboard_df.reset_index(drop=True)
-
-            selected_delete_idx = st.selectbox(
-                "Select invoice to delete",
-                options=list(delete_rows.index),
-                format_func=lambda i: (
-                    f"{delete_rows.loc[i]['invoice_number']} | "
-                    f"{delete_rows.loc[i]['supplier']}"
-                ),
+            delete_container = st.selectbox(
+                "Select container to delete",
+                dashboard_df["container_number"].tolist(),
                 key="dashboard_delete_select"
             )
 
-            selected_row = delete_rows.loc[selected_delete_idx]
-            delete_label = (
-                f"{selected_row['invoice_number']} | "
-                f"{selected_row['supplier']}"
+            confirm_delete = st.checkbox(
+                f"I confirm deleting container {delete_container}",
+                key="dashboard_delete_confirm"
             )
 
             if st.button("Delete selected container", use_container_width=True):
-                containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
-                containers = containers[
-                    containers["container_id"] != selected_row["container_id"]
-                ]
+                if not confirm_delete:
+                    st.error("Please confirm before deleting.")
+                else:
+                    selected_row = dashboard_df[
+                        dashboard_df["container_number"] == delete_container
+                    ].iloc[0]
 
-                write_csv("data/containers.csv", containers, f"Delete container {delete_label}")
-                add_log(selected_row["container_id"], "Container deleted", delete_label, "")
+                    containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
+                    containers = containers[
+                        containers["container_id"] != selected_row["container_id"]
+                    ]
 
-                st.success("Container deleted.")
-                st.rerun()
+                    write_csv("data/containers.csv", containers, f"Delete container {delete_container}")
+                    add_log(selected_row["container_id"], "Container deleted", delete_container, "")
+
+                    st.success("Container deleted.")
+                    st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -850,6 +866,196 @@ elif st.session_state.page == "Containers" and not is_handler:
                     st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+elif st.session_state.page == "Requests" and not is_handler:
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Requests</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Create and follow up purchase requests.</div>', unsafe_allow_html=True)
+
+    if is_admin:
+        tab1, tab2 = st.tabs(["Request Overview", "New Request"])
+    else:
+        tab1, tab2 = st.tabs(["My Requests", "Update Status"])
+
+    with tab1:
+        f1, f2, f3 = st.columns(3)
+
+        request_status_filter = f1.selectbox(
+            "Status",
+            ["All"] + REQUEST_STATUSES,
+            key="request_status_filter"
+        )
+
+        if is_admin:
+            request_supplier_filter = f2.selectbox(
+                "Supplier",
+                ["All"] + supplier_options,
+                key="request_supplier_filter"
+            )
+        else:
+            request_supplier_filter = user_supplier
+            f2.text_input("Supplier", value=user_supplier, disabled=True)
+
+        request_search = f3.text_input("Search article", key="request_search")
+
+        request_table = requests_view.copy()
+
+        if request_status_filter != "All":
+            request_table = request_table[request_table["status"] == request_status_filter]
+
+        if is_admin and request_supplier_filter != "All":
+            request_table = request_table[request_table["supplier"] == request_supplier_filter]
+
+        if request_search:
+            request_table = request_table[
+                request_table["article"].str.contains(request_search, case=False, na=False)
+            ]
+
+        if request_table.empty:
+            st.info("No requests found.")
+        else:
+            request_table = request_table.sort_values(
+                by=["arrival_week_nl", "created_at"],
+                ascending=True
+            )
+
+            st.dataframe(
+                request_table[
+                    [
+                        "supplier", "article", "quantity",
+                        "arrival_week_nl", "status", "created_by",
+                        "created_at", "updated_at"
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "supplier": "Supplier",
+                    "article": "Article",
+                    "quantity": "Qty",
+                    "arrival_week_nl": "Arrival Week NL",
+                    "status": "Status",
+                    "created_by": "Created By",
+                    "created_at": "Created",
+                    "updated_at": "Updated",
+                }
+            )
+
+    with tab2:
+        if is_admin:
+            with st.form("new_request_form"):
+                r1, r2, r3, r4 = st.columns(4)
+
+                request_supplier = r1.selectbox(
+                    "Supplier",
+                    supplier_options if supplier_options else [""],
+                    key="new_request_supplier"
+                )
+                article = r2.text_input("Article")
+                quantity = r3.text_input("Quantity")
+                arrival_week_nl = r4.selectbox(
+                    "Arrival Week NL",
+                    week_options(),
+                    index=week_options().index(current_week_code())
+                )
+
+                create_request = st.form_submit_button("Create Request")
+
+                if create_request:
+                    if not request_supplier:
+                        st.error("Supplier is required.")
+                    elif not article.strip():
+                        st.error("Article is required.")
+                    elif not quantity.strip():
+                        st.error("Quantity is required.")
+                    else:
+                        new_request = {
+                            "request_id": str(uuid.uuid4()),
+                            "supplier": request_supplier,
+                            "article": article.strip(),
+                            "quantity": quantity.strip(),
+                            "arrival_week_nl": arrival_week_nl,
+                            "status": "Pending",
+                            "created_by": st.session_state.username,
+                            "created_at": now_str(),
+                            "updated_at": now_str(),
+                        }
+
+                        requests_new = pd.concat(
+                            [requests, pd.DataFrame([new_request])],
+                            ignore_index=True
+                        )
+
+                        write_csv(
+                            "data/requests.csv",
+                            requests_new,
+                            f"Add request {article.strip()}"
+                        )
+
+                        st.success("Request created.")
+                        st.rerun()
+        else:
+            supplier_requests = requests_view.copy()
+
+            if supplier_requests.empty:
+                st.info("No requests to update.")
+            else:
+                supplier_requests = supplier_requests.sort_values(
+                    by=["arrival_week_nl", "created_at"],
+                    ascending=True
+                ).reset_index(drop=True)
+
+                selected_request_idx = st.selectbox(
+                    "Select request",
+                    options=list(supplier_requests.index),
+                    format_func=lambda i: (
+                        f"{supplier_requests.loc[i]['article']} | "
+                        f"Qty: {supplier_requests.loc[i]['quantity']} | "
+                        f"Week: {supplier_requests.loc[i]['arrival_week_nl']} | "
+                        f"{supplier_requests.loc[i]['status']}"
+                    ),
+                    key="supplier_request_select"
+                )
+
+                selected_request = supplier_requests.loc[selected_request_idx]
+
+                new_status = st.selectbox(
+                    "Status",
+                    REQUEST_STATUSES,
+                    index=REQUEST_STATUSES.index(selected_request["status"])
+                    if selected_request["status"] in REQUEST_STATUSES else 0,
+                    key="supplier_request_status"
+                )
+
+                if st.button("Save request status", use_container_width=True):
+                    request_idx = requests[
+                        requests["request_id"] == selected_request["request_id"]
+                    ].index[0]
+
+                    old_status = requests.at[request_idx, "status"]
+                    requests.at[request_idx, "status"] = new_status
+                    requests.at[request_idx, "updated_at"] = now_str()
+
+                    write_csv(
+                        "data/requests.csv",
+                        requests,
+                        f"Update request {selected_request['article']}"
+                    )
+
+                    if old_status != new_status:
+                        add_log(
+                            selected_request["request_id"],
+                            "Request status changed",
+                            old_status,
+                            new_status
+                        )
+
+                    st.success("Request status updated.")
+                    st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 elif st.session_state.page == "Suppliers" and is_admin:
