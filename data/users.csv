@@ -2,3 +2,4 @@ user_id,username,password_sha256,role,supplier_name,active,created_at,updated_at
 admin,admin,034c38958a0e27f8bab4c3011d12e327f1e682e657f13103064498933f7ff51c,admin,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
 iphandlers,iphandlers,f15ca9050c99f7b026f1f861f8658825e998bdd1140ca83eddf9c9778a6f18a0,handler,,True,2026-01-01 00:00:00,2026-01-01 00:00:00
 richlink,richlink,d6eabbc5f52b76cf3d513c621c58a179403b26091978ce77e166799e97e5c6ad,supplier,Richlink,True,2026-01-01 00:00:00,2026-01-01 00:00:00
+5b3f8b96-761d-43b4-834d-909f04616e1a,XZM Garden,83da5da5fdc0184c761313b922164ee75360ce2da1acbb02bd9b88cbc33f1920,supplier,XZM Garden,True,2026-06-03 05:52:35,2026-06-03 05:52:35
