@@ -592,8 +592,7 @@ if st.session_state.page == "Dashboard":
 
         editor_df = dashboard_df[editable_cols].copy()
         editor_df["eta_date"] = pd.to_datetime(editor_df["eta_date"], errors="coerce").dt.date
-        editor_df["status"] = editor_df["status"].apply(status_icon)
-        display_statuses = [status_icon(s) for s in STATUSES]
+        editor_df["status"] = editor_df["status"].apply(clean_status)
 
         if is_admin:
             editor_df.insert(0, "_delete", False)
@@ -636,7 +635,7 @@ if st.session_state.page == "Dashboard":
             "departure_week": st.column_config.SelectboxColumn("Departure WK", options=week_options(), required=True),
             "arrival_week": st.column_config.SelectboxColumn("Arrival WK", options=week_options(), required=True),
             "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
-            "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
+            "status": st.column_config.SelectboxColumn("Status", options=STATUSES, required=True),
             "shipping_line": st.column_config.TextColumn("Shipper"),
             "bl_number": st.column_config.TextColumn("B/L No."),
         }
