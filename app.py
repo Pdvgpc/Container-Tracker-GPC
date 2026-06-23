@@ -478,6 +478,72 @@ def save_edited_containers(original_df, edited_df):
         st.info("No changes detected.")
 
 
+def get_dashboard_selected_delete_ids(editor_key, editor_df):
+    state = st.session_state.get(editor_key, {})
+    edited_rows = {}
+
+    if isinstance(state, dict):
+        edited_rows = state.get("edited_rows", {}) or {}
+
+    selected_ids = []
+
+    for row_index, changes in edited_rows.items():
+        try:
+            row_index = int(row_index)
+        except Exception:
+            continue
+
+        if row_index < 0 or row_index >= len(editor_df):
+            continue
+
+        if bool(changes.get("_delete", False)):
+            selected_ids.append(str(editor_df.iloc[row_index]["container_id"]))
+
+    return selected_ids
+
+
+def delete_dashboard_selected_containers(selected_ids):
+    global containers
+
+    if not selected_ids:
+        st.error("Select at least one container first.")
+        return
+
+    containers_latest = read_csv("data/containers.csv", CONTAINER_COLUMNS)
+    selected_rows = containers_latest[
+        containers_latest["container_id"].isin(selected_ids)
+    ].copy()
+
+    if selected_rows.empty:
+        st.error("Selected containers were not found. Refresh and try again.")
+        return
+
+    labels = selected_rows.apply(container_label, axis=1).tolist()
+
+    containers = containers_latest[
+        ~containers_latest["container_id"].isin(selected_ids)
+    ].copy()
+
+    write_csv(
+        "data/containers.csv",
+        containers,
+        f"Delete {len(selected_rows)} selected container(s)"
+    )
+
+    for _, row in selected_rows.iterrows():
+        add_log(
+            row["container_id"],
+            "Container deleted",
+            container_label(row),
+            "",
+            "Deleted from dashboard selection"
+        )
+
+    st.session_state.pop("dashboard_editor", None)
+    st.success(f"Deleted {len(selected_rows)} container(s): " + ", ".join(labels))
+    st.rerun()
+
+
 if st.session_state.page == "Dashboard":
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Active Containers</div>', unsafe_allow_html=True)
@@ -529,25 +595,67 @@ if st.session_state.page == "Dashboard":
         editor_df["status"] = editor_df["status"].apply(status_icon)
         display_statuses = [status_icon(s) for s in STATUSES]
 
+        if is_admin:
+            editor_df.insert(0, "_delete", False)
+
+            selected_delete_ids = get_dashboard_selected_delete_ids(
+                "dashboard_editor",
+                editor_df
+            )
+
+            dcol1, dcol2 = st.columns([1.4, 3.6])
+
+            with dcol1:
+                delete_clicked = st.button(
+                    "🗑️ Delete selected container(s)",
+                    use_container_width=True,
+                    key="delete_selected_dashboard_btn"
+                )
+
+            with dcol2:
+                if selected_delete_ids:
+                    st.warning(
+                        f"{len(selected_delete_ids)} container(s) selected for deletion. "
+                        "Click the delete button to remove them."
+                    )
+                else:
+                    st.caption("Tick one or more rows in the Delete column to delete containers.")
+
+            if delete_clicked:
+                delete_dashboard_selected_containers(selected_delete_ids)
+
+        disabled_columns = ["container_id", "supplier"]
+
+        column_config = {
+            "container_id": None,
+            "container_number": st.column_config.TextColumn("Cont No."),
+            "invoice_number": st.column_config.TextColumn("Inv No."),
+            "supplier": st.column_config.TextColumn("Suppl"),
+            "origin_port": st.column_config.TextColumn("Origin Port"),
+            "destination_port": st.column_config.TextColumn("Destination Port"),
+            "departure_week": st.column_config.SelectboxColumn("Departure WK", options=week_options(), required=True),
+            "arrival_week": st.column_config.SelectboxColumn("Arrival WK", options=week_options(), required=True),
+            "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
+            "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
+            "shipping_line": st.column_config.TextColumn("Shipper"),
+            "bl_number": st.column_config.TextColumn("B/L No."),
+        }
+
+        if is_admin:
+            column_config["_delete"] = st.column_config.CheckboxColumn(
+                "Delete",
+                help="Tick rows here, then use the delete button above.",
+                default=False
+            )
+        else:
+            disabled_columns = ["container_id", "supplier"]
+
         edited = st.data_editor(
             editor_df,
             use_container_width=True,
             hide_index=True,
-            disabled=["container_id", "supplier"],
-            column_config={
-                "container_id": None,
-                "container_number": st.column_config.TextColumn("Cont No."),
-                "invoice_number": st.column_config.TextColumn("Inv No."),
-                "supplier": st.column_config.TextColumn("Suppl"),
-                "origin_port": st.column_config.TextColumn("Origin Port"),
-                "destination_port": st.column_config.TextColumn("Destination Port"),
-                "departure_week": st.column_config.SelectboxColumn("Departure WK", options=week_options(), required=True),
-                "arrival_week": st.column_config.SelectboxColumn("Arrival WK", options=week_options(), required=True),
-                "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
-                "status": st.column_config.SelectboxColumn("Status", options=display_statuses, required=True),
-                "shipping_line": st.column_config.TextColumn("Shipper"),
-                "bl_number": st.column_config.TextColumn("B/L No."),
-            },
+            disabled=disabled_columns,
+            column_config=column_config,
             key="dashboard_editor",
         )
 
@@ -555,7 +663,9 @@ if st.session_state.page == "Dashboard":
 
         if st.button("Save dashboard changes", use_container_width=True):
             original_df = dashboard_df[editable_cols].copy()
-            save_edited_containers(original_df, edited)
+            edited_save = edited[editable_cols].copy()
+            save_edited_containers(original_df, edited_save)
+
 
         st.divider()
         st.subheader("Open container details")
@@ -602,39 +712,7 @@ if st.session_state.page == "Dashboard":
             st.success("Details saved.")
             st.rerun()
 
-        if is_admin:
-            st.divider()
-            st.subheader("Delete container")
 
-            delete_container = st.selectbox(
-                "Select container to delete",
-                dashboard_df["container_number"].tolist(),
-                key="dashboard_delete_select"
-            )
-
-            confirm_delete = st.checkbox(
-                f"I confirm deleting container {delete_container}",
-                key="dashboard_delete_confirm"
-            )
-
-            if st.button("Delete selected container", use_container_width=True):
-                if not confirm_delete:
-                    st.error("Please confirm before deleting.")
-                else:
-                    selected_row = dashboard_df[
-                        dashboard_df["container_number"] == delete_container
-                    ].iloc[0]
-
-                    containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
-                    containers = containers[
-                        containers["container_id"] != selected_row["container_id"]
-                    ]
-
-                    write_csv("data/containers.csv", containers, f"Delete container {delete_container}")
-                    add_log(selected_row["container_id"], "Container deleted", delete_container, "")
-
-                    st.success("Container deleted.")
-                    st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
