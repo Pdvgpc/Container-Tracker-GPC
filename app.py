@@ -22,8 +22,11 @@ STATUSES = [
 CONTAINER_COLUMNS = [
     "container_id", "container_number", "invoice_number", "supplier",
     "origin_port", "destination_port", "departure_week", "arrival_week",
-    "eta_date", "status", "shipping_line", "bl_number", "notes",
-    "shipping_cost", "created_at", "updated_at"
+    "eta_date", "status", "shipping_line", "booking_number", "bl_number",
+    "tracking_provider", "tracking_status", "tracking_last_event",
+    "tracking_last_location", "tracking_vessel", "tracking_voyage",
+    "tracking_eta", "tracking_updated_at", "tracking_raw_json",
+    "notes", "shipping_cost", "created_at", "updated_at"
 ]
 
 SUPPLIER_COLUMNS = [
@@ -218,6 +221,24 @@ def container_label(row):
     if supplier:
         parts.append(supplier)
     return " | ".join(parts)
+
+
+def tracking_ready(row):
+    container_no = str(row.get("container_number", "")).strip()
+    bl_no = str(row.get("bl_number", "")).strip()
+    booking_no = str(row.get("booking_number", "")).strip()
+    return bool((container_no and container_no.upper() != "PENDING") or bl_no or booking_no)
+
+
+def tracking_reference(row):
+    container_no = str(row.get("container_number", "")).strip()
+    bl_no = str(row.get("bl_number", "")).strip()
+    booking_no = str(row.get("booking_number", "")).strip()
+    if container_no and container_no.upper() != "PENDING":
+        return container_no
+    if bl_no:
+        return bl_no
+    return booking_no
 
 
 @st.cache_resource
@@ -449,10 +470,12 @@ def save_edited_containers(original_df, edited_df):
         editable_columns = [
             "container_number", "invoice_number", "origin_port", "destination_port",
             "departure_week", "arrival_week", "eta_date", "status",
-            "shipping_line", "bl_number"
+            "shipping_line", "booking_number", "bl_number"
         ]
 
         for col in editable_columns:
+            if col not in edited_row.index or col not in original_row.index:
+                continue
             old = "" if pd.isna(original_row[col]) else str(original_row[col])
             new = "" if pd.isna(edited_row[col]) else str(edited_row[col])
 
@@ -681,33 +704,92 @@ if st.session_state.page == "Dashboard":
         detail_id = detail_map[selected_detail]
         detail_row = containers[containers["container_id"] == detail_id].iloc[0]
 
-        d1, d2 = st.columns(2)
+        general_tab, tracking_tab, planning_tab = st.tabs(["General", "Live Tracking", "Notes / Cost"])
 
-        with d1:
-            st.markdown("#### Notes")
-            detail_notes = st.text_area(
-                "Notes",
-                value=detail_row.get("notes", ""),
-                height=180,
-                key=f"notes_{detail_id}"
+        with general_tab:
+            g1, g2, g3 = st.columns(3)
+            detail_container_number = g1.text_input(
+                "Container Number",
+                value=detail_row.get("container_number", ""),
+                key=f"detail_container_number_{detail_id}"
+            )
+            detail_invoice_number = g2.text_input(
+                "Invoice Number",
+                value=detail_row.get("invoice_number", ""),
+                key=f"detail_invoice_number_{detail_id}"
+            )
+            detail_shipping_line = g3.text_input(
+                "Shipping Line",
+                value=detail_row.get("shipping_line", ""),
+                key=f"detail_shipping_line_{detail_id}"
             )
 
-        with d2:
-            st.markdown("#### Shipping Cost")
-            detail_shipping_cost = st.text_input(
-                "Shipping Cost",
-                value=detail_row.get("shipping_cost", ""),
-                key=f"shipping_cost_{detail_id}"
+            g4, g5 = st.columns(2)
+            detail_booking_number = g4.text_input(
+                "Booking Number",
+                value=detail_row.get("booking_number", ""),
+                key=f"detail_booking_number_{detail_id}"
             )
+            detail_bl_number = g5.text_input(
+                "B/L Number",
+                value=detail_row.get("bl_number", ""),
+                key=f"detail_bl_number_{detail_id}"
+            )
+
+        with tracking_tab:
+            t1, t2, t3 = st.columns(3)
+            t1.metric("Tracking Status", detail_row.get("tracking_status", "") or "Not synced")
+            t2.metric("Live ETA", detail_row.get("tracking_eta", "") or "-")
+            t3.metric("Last Updated", detail_row.get("tracking_updated_at", "") or "-")
+
+            t4, t5 = st.columns(2)
+            t4.text_input("Last Event", value=detail_row.get("tracking_last_event", ""), disabled=True, key=f"tracking_last_event_{detail_id}")
+            t5.text_input("Last Location", value=detail_row.get("tracking_last_location", ""), disabled=True, key=f"tracking_last_location_{detail_id}")
+
+            t6, t7, t8 = st.columns(3)
+            t6.text_input("Vessel", value=detail_row.get("tracking_vessel", ""), disabled=True, key=f"tracking_vessel_{detail_id}")
+            t7.text_input("Voyage", value=detail_row.get("tracking_voyage", ""), disabled=True, key=f"tracking_voyage_{detail_id}")
+            t8.text_input("Tracking Provider", value=detail_row.get("tracking_provider", ""), disabled=True, key=f"tracking_provider_{detail_id}")
+
+            if tracking_ready(detail_row):
+                if st.button("Track now", use_container_width=True, key=f"track_now_{detail_id}"):
+                    st.info("Tracking API is nog niet gekoppeld. Deze knop staat alvast klaar voor ShipsGo/Vizion/etc.")
+            else:
+                st.warning("Tracking werkt pas zodra Container Number, B/L Number of Booking Number is ingevuld.")
+
+        with planning_tab:
+            p1, p2 = st.columns(2)
+            with p1:
+                st.markdown("#### Notes")
+                detail_notes = st.text_area(
+                    "Notes",
+                    value=detail_row.get("notes", ""),
+                    height=180,
+                    key=f"notes_{detail_id}"
+                )
+
+            with p2:
+                st.markdown("#### Shipping Cost")
+                detail_shipping_cost = st.text_input(
+                    "Shipping Cost",
+                    value=detail_row.get("shipping_cost", ""),
+                    key=f"shipping_cost_{detail_id}"
+                )
 
         if st.button("Save details", use_container_width=True):
             idx = containers[containers["container_id"] == detail_id].index[0]
+            clean_container_number = detail_container_number.strip() if detail_container_number.strip() else "PENDING"
+            containers.at[idx, "container_number"] = clean_container_number
+            containers.at[idx, "invoice_number"] = detail_invoice_number.strip()
+            containers.at[idx, "shipping_line"] = detail_shipping_line.strip()
+            containers.at[idx, "booking_number"] = detail_booking_number.strip()
+            containers.at[idx, "bl_number"] = detail_bl_number.strip()
             containers.at[idx, "notes"] = detail_notes.strip()
             containers.at[idx, "shipping_cost"] = detail_shipping_cost.strip()
             containers.at[idx, "updated_at"] = now_str()
 
             write_csv("data/containers.csv", containers, f"Update details {detail_row.get('container_number', '')}")
-            add_log(detail_id, "Details updated", "", "", "Notes / shipping cost updated")
+            add_log(detail_id, "Details updated", "", "", "General details / notes / shipping cost updated")
             st.success("Details saved.")
             st.rerun()
 
@@ -772,6 +854,7 @@ elif st.session_state.page == "Containers" and not is_handler:
                 "arrival_week": "Arrival Week",
                 "eta_date": "ETA Date",
                 "shipping_line": "Shipping Line",
+                "booking_number": "Booking No.",
                 "bl_number": "B/L No.",
             }
         )
@@ -837,7 +920,9 @@ elif st.session_state.page == "Containers" and not is_handler:
                         eta_value = parsed_eta.date()
 
                 eta_date = c9.date_input("ETA Date", value=eta_value)
-                bl_number = st.text_input("B/L Number", value=row["bl_number"])
+                b1, b2 = st.columns(2)
+                booking_number = b1.text_input("Booking Number", value=row.get("booking_number", ""))
+                bl_number = b2.text_input("B/L Number", value=row["bl_number"])
                 shipping_cost = st.text_input("Shipping Cost", value=row.get("shipping_cost", ""))
                 notes = st.text_area("Notes", value=row["notes"])
 
@@ -856,6 +941,7 @@ elif st.session_state.page == "Containers" and not is_handler:
                     containers.at[idx, "eta_date"] = str(eta_date)
                     containers.at[idx, "status"] = status
                     containers.at[idx, "shipping_line"] = shipping_line
+                    containers.at[idx, "booking_number"] = booking_number
                     containers.at[idx, "bl_number"] = bl_number
                     containers.at[idx, "notes"] = notes
                     containers.at[idx, "shipping_cost"] = shipping_cost
@@ -896,7 +982,9 @@ elif st.session_state.page == "Containers" and not is_handler:
             eta_date = c9.date_input("ETA Date", value=date.today())
 
             status = st.selectbox("Status", STATUSES)
-            bl_number = st.text_input("B/L Number")
+            b1, b2 = st.columns(2)
+            booking_number = b1.text_input("Booking Number")
+            bl_number = b2.text_input("B/L Number")
             shipping_cost = st.text_input("Shipping Cost")
             notes = st.text_area("Notes")
 
@@ -927,7 +1015,17 @@ elif st.session_state.page == "Containers" and not is_handler:
                         "eta_date": str(eta_date),
                         "status": status,
                         "shipping_line": shipping_line.strip(),
+                        "booking_number": booking_number.strip(),
                         "bl_number": bl_number.strip(),
+                        "tracking_provider": "",
+                        "tracking_status": "",
+                        "tracking_last_event": "",
+                        "tracking_last_location": "",
+                        "tracking_vessel": "",
+                        "tracking_voyage": "",
+                        "tracking_eta": "",
+                        "tracking_updated_at": "",
+                        "tracking_raw_json": "",
                         "notes": notes.strip(),
                         "shipping_cost": shipping_cost.strip(),
                         "created_at": now_str(),
