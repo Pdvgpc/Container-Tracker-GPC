@@ -1,64 +1,64 @@
-container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,bl_number,notes,shipping_cost,created_at,updated_at
-10b67154-1c12-4404-8d3b-43b91c664523,YMLU5455243,YL-260339,Richlink,Xiamen,Rotterdam,2026-W18,2026-W24,2026-06-13,On water,,00311859A,"SANSEVIERIA LAURENTII H30-40CM/ 3800 POTS/ 2 WOODEN CASES
+container_id,container_number,invoice_number,supplier,origin_port,destination_port,departure_week,arrival_week,eta_date,status,shipping_line,booking_number,bl_number,tracking_provider,tracking_status,tracking_last_event,tracking_last_location,tracking_vessel,tracking_voyage,tracking_eta,tracking_updated_at,tracking_raw_json,notes,shipping_cost,created_at,updated_at
+10b67154-1c12-4404-8d3b-43b91c664523,YMLU5455243,YL-260339,Richlink,Xiamen,Rotterdam,2026-W18,2026-W24,2026-06-13,On water,,,00311859A,,,,,,,,,,"SANSEVIERIA LAURENTII H30-40CM/ 3800 POTS/ 2 WOODEN CASES
 SANSEVIERIA LAURENTII H50-60CM/ 79200 POTS/ 6 WOODEN CASES
 Client No.: 7050",,2026-06-02 08:00:25,2026-06-23 09:18:35
-5c406e46-3a96-47ee-811d-afe6581cba96,HMMU5540608,YL-260428A,Richlink,Xiamen,Rotterdam,2026-W23,2026-W30,2026-07-22,Booked,,,"FICUS MICROCARPA, Ginseng Grafted 150g /8880 pcs/ 3 wooden cases
+5c406e46-3a96-47ee-811d-afe6581cba96,HMMU5540608,YL-260428A,Richlink,Xiamen,Rotterdam,2026-W23,2026-W30,2026-07-22,On water,,,00314033A,,,,,,,,,,"FICUS MICROCARPA, Ginseng Grafted 150g /8880 pcs/ 3 wooden cases
 FICUS MICROCARPA, Ginseng Grafted 250g /2940 pcs/ 2 wooden cases
 Client NO. 7005   Ficus lyrata, Branched, 80cm/50pcs, 100cm/40pcs, 120cm/30pcs/ 1 wooden case
 Client NO. 7016  Ficus lyrata, Branched, 100cm/140pcs/ 1 wooden case
-Client NO. 7062  Ficus lyrata, Branched, 120cm/900pcs/ 1 wooden case",,2026-06-02 08:14:06,2026-06-02 08:14:06
-2203fbc8-57ce-44ac-b0df-9c80f30d17b5,YMLU5429305,YL-260448,Richlink,Xiamen,Rotterdam,2026-W20,2026-W28,2026-07-09,On water,,00313343A,"SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H30-40cm/ 15200pots/ 6 wooden cases
+Client NO. 7062  Ficus lyrata, Branched, 120cm/900pcs/ 1 wooden case",,2026-06-02 08:14:06,2026-07-08 07:32:52
+2203fbc8-57ce-44ac-b0df-9c80f30d17b5,YMLU5429305,YL-260448,Richlink,Xiamen,Rotterdam,2026-W20,2026-W28,2026-07-09,On water,,,00313343A,,,,,,,,,,"SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H30-40cm/ 15200pots/ 6 wooden cases
 Client No: 7050 and 2 wooden cases 7047",,2026-06-02 08:19:32,2026-06-02 11:25:03
-34c80556-3994-4694-b01a-05ef63b643dd,HMMU5402954,YL-260538,Richlink,Xiamen,Rotterdam,2026-W23,2026-W31,2026-07-29,Booked,,XMNE64423200,"SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H40-50cm/ 4560 pots/ 3 wooden cases
+34c80556-3994-4694-b01a-05ef63b643dd,HMMU5402954,YL-260538,Richlink,Xiamen,Rotterdam,2026-W23,2026-W31,2026-07-29,On water,,,XMNE64423200,,,,,,,,,,"SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H40-50cm/ 4560 pots/ 3 wooden cases
 SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H50-60cm/ 5280 pots/ 4 wooden cases
 SANSEVIERIA TRIFASCIATA VAR.LAURENTII 5plants/pot H60-70cm/ 1140pots/ 1 wooden cases
-Client No: 7050",,2026-06-02 08:25:46,2026-06-02 08:26:34
-bbd0c29c-eba4-4159-8e7d-e72c6f579564,PENDING,YL-260628A,Richlink,Xiamen,Rotterdam,2026-W23,2026-W31,2026-07-31,Booked,,,"Client NO. 7063   Ficus lyrata, Branched, 120cm/ 180 pcs/ 2 wooden cases
+Client No: 7050",,2026-06-02 08:25:46,2026-07-08 07:32:52
+bbd0c29c-eba4-4159-8e7d-e72c6f579564,SEKU9280122,YL-260628A,Richlink,Xiamen,Rotterdam,2026-W24,2026-W31,2026-08-01,On water,,,00314402A,,,,,,,,,,"Client NO. 7063   Ficus lyrata, Branched, 120cm/ 180 pcs/ 2 wooden cases
 Client NO. 7041   SANSEVIERIA LAURENTII H60-70CM/ 1140 pots/ 1 wooden case
 Client NO. 7000   SANSEVIERIA SUPERBA H30-35cm, 12cm pot ,3pp/ 1320 pots/ 1 wooden case
 Client NO. 7000   SANSEVIERIA BLACK GOLD SUPERBA H30-35cm, 12cm pot ,3pp/ 1320 pots/ 1 wooden case
 Client NO. 7050   SANSEVIERIA SUPERBA H30-35cm, 12cm pot ,3pp/ 1320 pots/ 1 wooden case
 Client NO. 7050   SANSEVIERIA BLACK GOLD SUPERBA H30-35cm, 12cm pot ,3pp/ 1320 pots/ 1 wooden case
-PACHIRA MACROCARPA 5 Braids H30CM/ 6650 units/ 1 wooden case",,2026-06-02 08:35:31,2026-06-09 06:55:32
-85254917-5bd4-4154-8fa6-9bd9a30efac8,PENDING,YL-260638,Richlink,Xiamen,Rotterdam,2026-W28,2026-W36,2026-08-30,Planned,,,"Client NO. 7050
+PACHIRA MACROCARPA 5 Braids H30CM/ 6650 units/ 1 wooden case",,2026-06-02 08:35:31,2026-07-08 07:32:56
+85254917-5bd4-4154-8fa6-9bd9a30efac8,OTPU6507185,YL-260638,Richlink,Xiamen,Rotterdam,2026-W28,2026-W36,2026-08-30,Booked,,,,,,,,,,,,,"Client NO. 7050
 SANSEVIERIA LAURENTII H40-50CM 5pp/ 4560 pots/ 3 wooden cases
 SANSEVIERIA LAURENTII H50-60CM 5pp/ 5280 pots/ 4 wooden cases
-SANSEVIERIA LAURENTII H60-70CM 5pp/ 1140 pots/ 1 wooden cases",,2026-06-02 08:39:59,2026-06-02 08:39:59
-fdfad2ed-31ae-47f4-8376-8946c043e2f9,PENDING,YL-260718,Richlink,Xiamen,Rotterdam,2026-W28,2026-W36,2026-08-30,Planned,,,Client NO. 7050  SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200 pots/ 8 wooden cases,,2026-06-02 08:42:19,2026-06-02 08:42:19
-9734a3f6-f381-41f4-bfae-9083943c34c6,PENDING,YL-260818,Richlink,Xiamen,Rotterdam,2026-W34,2026-W42,2026-10-12,Planned,,,"Client NO. 7050  
+SANSEVIERIA LAURENTII H60-70CM 5pp/ 1140 pots/ 1 wooden cases",,2026-06-02 08:39:59,2026-07-08 07:32:56
+fdfad2ed-31ae-47f4-8376-8946c043e2f9, YMLU5544593,YL-260718,Richlink,Xiamen,Rotterdam,2026-W28,2026-W36,2026-08-30,Booked,,,,,,,,,,,,,Client NO. 7050  SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200 pots/ 8 wooden cases,,2026-06-02 08:42:19,2026-07-08 07:32:58
+9734a3f6-f381-41f4-bfae-9083943c34c6,PENDING,YL-260818,Richlink,Xiamen,Rotterdam,2026-W34,2026-W42,2026-10-12,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H40-50CM 5pp/ 4560 pots/ 3 wooden cases
 SANSEVIERIA LAURENTII H50-60CM 5pp/ 5280 pots/ 4 wooden cases
 SANSEVIERIA LAURENTII H60-70CM 5pp/ 1140 pots/ 1 wooden cases",,2026-06-02 08:52:47,2026-06-02 08:52:47
-a4cbf613-c77b-44ca-bfc8-807657a1643a,PENDING,YL-260928,Richlink,Xiamen,Rotterdam,2026-W38,2026-W46,2026-11-09,Planned,,,"Client NO. 7050  
+a4cbf613-c77b-44ca-bfc8-807657a1643a,PENDING,YL-260928,Richlink,Xiamen,Rotterdam,2026-W38,2026-W46,2026-11-09,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 08:56:04,2026-06-02 08:56:04
-4305d656-f45f-4872-9a5d-3ea047d50f6b,PENDING,YL-261028,Richlink,Xiamen,Rotterdam,2026-W43,2026-W51,2026-12-14,Planned,,,"Client NO. 7050  
+4305d656-f45f-4872-9a5d-3ea047d50f6b,PENDING,YL-261028,Richlink,Xiamen,Rotterdam,2026-W43,2026-W51,2026-12-14,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H40-50CM 5pp/ 6080 pots/ 4 wooden cases
 SANSEVIERIA LAURENTII H50-60CM 5pp/ 3960 pots/ 3 wooden cases
 SANSEVIERIA LAURENTII H60-70CM 5pp/ 1140 pots/ 1 wooden cases",,2026-06-02 08:58:40,2026-06-02 08:58:40
-da94ecef-e770-42cf-bf73-4528440e3e74,PENDING,YL-261138,Richlink,Xiamen,Rotterdam,2026-W48,2027-W03,2027-01-18,Planned,,,"Client NO. 7050  
+da94ecef-e770-42cf-bf73-4528440e3e74,PENDING,YL-261138,Richlink,Xiamen,Rotterdam,2026-W48,2027-W03,2027-01-18,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:04:53,2026-06-02 09:04:53
-d93701dd-eb56-4a4e-b82c-2eecf745f221,PENDING,YL-270208,Richlink,Xiamen,Rotterdam,2027-W05,2027-W13,2027-03-29,Planned,,,"Client NO. 7050  
+d93701dd-eb56-4a4e-b82c-2eecf745f221,PENDING,YL-270208,Richlink,Xiamen,Rotterdam,2027-W05,2027-W13,2027-03-29,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:06:53,2026-06-02 09:06:53
-8d9f40a7-4f65-442c-b05d-c94ee7d7810e,PENDING,YL-270428,Richlink,Xiamen,Rotterdam,2027-W15,2027-W21,2027-05-24,Planned,,,"Client NO. 7050  
+8d9f40a7-4f65-442c-b05d-c94ee7d7810e,PENDING,YL-270428,Richlink,Xiamen,Rotterdam,2027-W15,2027-W21,2027-05-24,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:08:24,2026-06-02 09:08:24
-e914d396-f3ff-4fd7-8857-eb8f10016d31,PENDING,YL-270638,Richlink,Xiamen,Rotterdam,2027-W25,2027-W31,2027-08-02,Planned,,,"Client NO. 7050  
+e914d396-f3ff-4fd7-8857-eb8f10016d31,PENDING,YL-270638,Richlink,Xiamen,Rotterdam,2027-W25,2027-W31,2027-08-02,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:09:23,2026-06-02 09:09:23
-28587981-78e1-4296-87e0-e37d31b45b83,PENDING,YL-270908,Richlink,Xiamen,Rotterdam,2027-W35,2027-W41,2027-10-11,Planned,,,"Client NO. 7050  
+28587981-78e1-4296-87e0-e37d31b45b83,PENDING,YL-270908,Richlink,Xiamen,Rotterdam,2027-W35,2027-W41,2027-10-11,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:10:23,2026-06-02 09:10:23
-44bd1bb6-89cf-407b-8301-af3d51c8370a,PENDING,YL-271118,Richlink,Xiamen,Rotterdam,2027-W45,2027-W51,2027-12-20,Planned,,,"Client NO. 7050  
+44bd1bb6-89cf-407b-8301-af3d51c8370a,PENDING,YL-271118,Richlink,Xiamen,Rotterdam,2027-W45,2027-W51,2027-12-20,Planned,,,,,,,,,,,,,"Client NO. 7050  
 SANSEVIERIA LAURENTII H30-40CM 5pp/ 15200pots/ 8 wooden cases",,2026-06-02 09:10:58,2026-06-02 09:10:58
-fb3a487e-c227-4e8c-ba8f-6cc2f18d0a20,SZLU9716391,YL-260338,Richlink,Xiamen,Rotterdam,2026-W15,2026-W21,2026-05-23,Completed,,00311483A,"Client NO. 7050
+fb3a487e-c227-4e8c-ba8f-6cc2f18d0a20,SZLU9716391,YL-260338,Richlink,Xiamen,Rotterdam,2026-W15,2026-W21,2026-05-23,Completed,,,00311483A,,,,,,,,,,"Client NO. 7050
 SANSEVIERIA LAURENTII H40-50CM 5pp/ 3040 pots/ 2 wooden cases
 SANSEVIERIA LAURENTII H50-60CM 5pp/ 5280 pots/ 4 wooden cases
 SANSEVIERIA LAURENTII H60-70CM 5pp/ 1140 pots/ 1 wooden cases
 SANSEVIERIA ZEYLANICA H50-60cm 5pp/ 1200 pots + Samples(12cm pot SANSEVIERIA SUPERBA VARIETIES + PACHIRA 5 Braid H30/35/40/45/55cm)/ 1 wooden cases",,2026-06-03 01:48:58,2026-06-03 01:48:58
-5a45b9e8-e69b-463a-8015-2365effe3376,YMLU5545765,YL-260218,Richlink,Xiamen,Rotterdam,2026-W06,2026-W12,2026-03-20,Completed,,00309603A,"Client NO. 7050
+5a45b9e8-e69b-463a-8015-2365effe3376,YMLU5545765,YL-260218,Richlink,Xiamen,Rotterdam,2026-W06,2026-W12,2026-03-20,Completed,,,00309603A,,,,,,,,,,"Client NO. 7050
 SANSEVIERIA LAURENTII H50-60CM 5pp/ 10560 pots/ 8 wooden cases",,2026-06-03 01:57:56,2026-06-03 01:57:56
-4ee50610-719f-465d-bc24-bbea447f45a7,YMLU5551268,YL-260128,Richlink,Xiamen,Rotterdam,2026-W04,2026-W12,2026-03-18,Completed,,00309133A,"IO Nr.: IO26-0076
+4ee50610-719f-465d-bc24-bbea447f45a7,YMLU5551268,YL-260128,Richlink,Xiamen,Rotterdam,2026-W04,2026-W12,2026-03-18,Completed,,,00309133A,,,,,,,,,,"IO Nr.: IO26-0076
 FICUS MICROCARPA, Ginseng Grafted 150g/2 crates
 PACHIRA MACROCARPA, 5 BRAIDS (Old seedlings) Total height: 70-80/60-65/45-50cm, unrooted/1 crate
 SANSEVIERIA SUPERBA H35-40cm,10.5cm/3 crates
 SANSEVIERIA BLACK GOLD SUPERBA H35-40cm,10.5cm/1 crate
 SANSEVIERIA TRIFASCIATA 'BLACK JADE' H35-40cm,10.5cm/1 crate",,2026-06-03 02:04:32,2026-06-03 02:04:32
-25e4a3e2-f497-419d-8510-9415dd76bd9d,YMLU5549893,YL-260118,Richlink,Xiamen,Rotterdam,2026-W04,2026-W12,2026-03-18,Completed,,00309134A,"Sansevieria Laurentii 
+25e4a3e2-f497-419d-8510-9415dd76bd9d,YMLU5549893,YL-260118,Richlink,Xiamen,Rotterdam,2026-W04,2026-W12,2026-03-18,Completed,,,00309134A,,,,,,,,,,"Sansevieria Laurentii 
 H50-60cm/8 crates",,2026-06-03 02:06:35,2026-06-03 02:06:35
