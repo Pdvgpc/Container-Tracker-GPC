@@ -8,7 +8,7 @@ import pandas as pd
 import hashlib
 import uuid
 import base64
-from io import StringIO
+from io import StringIO, BytesIO
 from datetime import datetime, date
 from github import Github
 
@@ -175,6 +175,29 @@ def sha256_hash(text):
 
 def now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def dataframe_to_excel(df):
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Container Planning")
+        worksheet = writer.sheets["Container Planning"]
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+        for column_cells in worksheet.columns:
+            max_length = 0
+            column_letter = column_cells[0].column_letter
+
+            for cell in column_cells:
+                value = "" if cell.value is None else str(cell.value)
+                max_length = max(max_length, len(value))
+
+            worksheet.column_dimensions[column_letter].width = min(max_length + 2, 55)
+
+    output.seek(0)
+    return output.getvalue()
 
 
 def current_week_code():
@@ -840,6 +863,39 @@ elif st.session_state.page == "Containers" and not is_handler:
         ].copy()
 
         table_df["status"] = table_df["status"].apply(status_icon)
+
+        export_df = table_df[
+            [
+                "departure_week",
+                "arrival_week",
+                "eta_date",
+                "status",
+                "shipping_line",
+                "bl_number",
+                "notes",
+            ]
+        ].copy()
+
+        export_df = export_df.rename(
+            columns={
+                "departure_week": "Departure Week",
+                "arrival_week": "Arrival Week",
+                "eta_date": "ETA Date",
+                "status": "Status",
+                "shipping_line": "Shipping Line",
+                "bl_number": "B/L No.",
+                "notes": "Notes",
+            }
+        )
+
+        st.download_button(
+            label="📥 Download planning as Excel",
+            data=dataframe_to_excel(export_df),
+            file_name=f"container_planning_{date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="download_container_planning_excel",
+        )
 
         st.dataframe(
             table_df,
