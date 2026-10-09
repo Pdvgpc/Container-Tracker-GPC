@@ -22,11 +22,10 @@ STATUSES = [
 CONTAINER_COLUMNS = [
     "container_id", "container_number", "invoice_number", "supplier",
     "origin_port", "destination_port", "departure_week", "arrival_week",
-    "eta_date", "status", "shipping_line", "booking_number", "bl_number",
-    "tracking_provider", "tracking_status", "tracking_last_event",
-    "tracking_last_location", "tracking_vessel", "tracking_voyage",
-    "tracking_eta", "tracking_updated_at", "tracking_raw_json",
-    "notes", "shipping_cost", "created_at", "updated_at"
+    "eta_date", "status", "shipping_line", "bl_number", "booking_number",
+    "notes", "shipping_cost", "tracking_status", "last_event",
+    "last_location", "vessel", "voyage", "tracking_eta",
+    "tracking_updated_at", "created_at", "updated_at"
 ]
 
 SUPPLIER_COLUMNS = [
@@ -178,24 +177,38 @@ def now_str():
 
 
 def dataframe_to_excel(df):
-    output = BytesIO()
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
 
+    output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Container Planning")
-        worksheet = writer.sheets["Container Planning"]
-        worksheet.freeze_panes = "A2"
-        worksheet.auto_filter.ref = worksheet.dimensions
-
-        for column_cells in worksheet.columns:
-            max_length = 0
-            column_letter = column_cells[0].column_letter
-
-            for cell in column_cells:
-                value = "" if cell.value is None else str(cell.value)
-                max_length = max(max_length, len(value))
-
-            worksheet.column_dimensions[column_letter].width = min(max_length + 2, 55)
-
+        ws = writer.sheets["Container Planning"]
+        ws.sheet_view.showGridLines = False
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        widths = [22, 22, 19, 24, 78]
+        for i, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        ws.row_dimensions[1].height = 34
+        for cell in ws[1]:
+            cell.fill = PatternFill("solid", fgColor="17365D")
+            cell.font = Font(name="Aptos", size=12, bold=True, color="FFFFFF")
+            cell.alignment = Alignment(vertical="center", horizontal="left", indent=1)
+        for row in ws.iter_rows(min_row=2):
+            row_num = row[0].row
+            ws.row_dimensions[row_num].height = 29
+            for cell in row:
+                cell.fill = PatternFill("solid", fgColor="F0F5FA" if row_num % 2 == 0 else "FFFFFF")
+                cell.font = Font(name="Aptos", size=11, color="243247")
+                cell.alignment = Alignment(vertical="center", wrap_text=True, indent=1)
+                cell.border = Border(bottom=Side(style="hair", color="DCE5EF"))
+            notes = row[4].value
+            if notes:
+                ws.row_dimensions[row_num].height = min(90, max(29, 16 * (str(notes).count("\n") + 1)))
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.print_options.horizontalCentered = True
     output.seek(0)
     return output.getvalue()
 
@@ -766,13 +779,13 @@ if st.session_state.page == "Dashboard":
             t3.metric("Last Updated", detail_row.get("tracking_updated_at", "") or "-")
 
             t4, t5 = st.columns(2)
-            t4.text_input("Last Event", value=detail_row.get("tracking_last_event", ""), disabled=True, key=f"tracking_last_event_{detail_id}")
-            t5.text_input("Last Location", value=detail_row.get("tracking_last_location", ""), disabled=True, key=f"tracking_last_location_{detail_id}")
+            t4.text_input("Last Event", value=detail_row.get("last_event", ""), disabled=True, key=f"tracking_last_event_{detail_id}")
+            t5.text_input("Last Location", value=detail_row.get("last_location", ""), disabled=True, key=f"tracking_last_location_{detail_id}")
 
             t6, t7, t8 = st.columns(3)
-            t6.text_input("Vessel", value=detail_row.get("tracking_vessel", ""), disabled=True, key=f"tracking_vessel_{detail_id}")
-            t7.text_input("Voyage", value=detail_row.get("tracking_voyage", ""), disabled=True, key=f"tracking_voyage_{detail_id}")
-            t8.text_input("Tracking Provider", value=detail_row.get("tracking_provider", ""), disabled=True, key=f"tracking_provider_{detail_id}")
+            t6.text_input("Vessel", value=detail_row.get("vessel", ""), disabled=True, key=f"tracking_vessel_{detail_id}")
+            t7.text_input("Voyage", value=detail_row.get("voyage", ""), disabled=True, key=f"tracking_voyage_{detail_id}")
+
 
             if tracking_ready(detail_row):
                 if st.button("Track now", use_container_width=True, key=f"track_now_{detail_id}"):
@@ -864,29 +877,16 @@ elif st.session_state.page == "Containers" and not is_handler:
 
         table_df["status"] = table_df["status"].apply(status_icon)
 
-        export_df = table_df[
-            [
-                "departure_week",
-                "arrival_week",
-                "eta_date",
-                "status",
-                "shipping_line",
-                "bl_number",
-                "notes",
-            ]
-        ].copy()
-
-        export_df = export_df.rename(
-            columns={
-                "departure_week": "Departure Week",
-                "arrival_week": "Arrival Week",
-                "eta_date": "ETA Date",
-                "status": "Status",
-                "shipping_line": "Shipping Line",
-                "bl_number": "B/L No.",
-                "notes": "Notes",
-            }
-        )
+        export_df = filtered[[
+            "departure_week", "arrival_week", "eta_date", "status", "notes"
+        ]].copy()
+        export_df = export_df.rename(columns={
+            "departure_week": "Departure Week",
+            "arrival_week": "Arrival Week",
+            "eta_date": "ETA Date",
+            "status": "Status",
+            "notes": "Notes",
+        })
 
         st.download_button(
             label="📥 Download planning as Excel",
@@ -1073,16 +1073,14 @@ elif st.session_state.page == "Containers" and not is_handler:
                         "shipping_line": shipping_line.strip(),
                         "booking_number": booking_number.strip(),
                         "bl_number": bl_number.strip(),
-                        "tracking_provider": "",
-                        "tracking_status": "",
-                        "tracking_last_event": "",
-                        "tracking_last_location": "",
-                        "tracking_vessel": "",
-                        "tracking_voyage": "",
+                                                "tracking_status": "",
+                        "last_event": "",
+                        "last_location": "",
+                        "vessel": "",
+                        "voyage": "",
                         "tracking_eta": "",
                         "tracking_updated_at": "",
-                        "tracking_raw_json": "",
-                        "notes": notes.strip(),
+                                                "notes": notes.strip(),
                         "shipping_cost": shipping_cost.strip(),
                         "created_at": now_str(),
                         "updated_at": now_str(),
