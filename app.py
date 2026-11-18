@@ -1,18 +1,30 @@
 # Roles:
 # admin    = sees everything
 # handler  = dashboard only, sees all containers, can edit dashboard rows, cannot add/delete/manage
-# supplier = sees only own supplier containers, can edit own rows and add own containers
+# supplier = sees, edits and deletes own containers, and can add containers
 
 import streamlit as st
 import pandas as pd
 import hashlib
 import uuid
 import base64
+import hmac
+import json
+import logging
+import time
+from html import escape
 from io import StringIO, BytesIO
 from datetime import datetime, date
-from github import Github
+from github import Github, GithubException, InputGitTreeElement
+from requests.exceptions import ConnectionError, Timeout
 
 st.set_page_config(page_title="Container Tracker GPC", page_icon="🚢", layout="wide")
+
+logger = logging.getLogger(__name__)
+CONTAINERS_PATH = "data/containers.csv"
+LOGS_PATH = "data/container_logs.csv"
+USERS_PATH = "data/users.csv"
+csv_versions = {}
 
 STATUSES = [
     "Planned", "Booked", "Departed", "On water", "Arrived at port",
@@ -283,37 +295,54 @@ def get_repo():
     return g.get_repo(st.secrets["GITHUB_REPO"])
 
 
-def read_csv(path, columns):
-    repo = get_repo()
-    branch = st.secrets.get("GITHUB_BRANCH", "main")
+def github_branch():
+    return st.secrets.get("GITHUB_BRANCH", "main")
+
+
+def read_csv_version(repo, path, columns, ref, *, required=False):
     try:
-        file = repo.get_contents(path, ref=branch)
-        content = base64.b64decode(file.content).decode("utf-8")
-        if not content.strip():
-            return pd.DataFrame(columns=columns)
-        df = pd.read_csv(StringIO(content), dtype=str).fillna("")
-        for col in columns:
-            if col not in df.columns:
-                df[col] = ""
-        return df[columns]
-    except Exception:
-        return pd.DataFrame(columns=columns)
+        file = repo.get_contents(path, ref=ref)
+    except GithubException as exc:
+        if exc.status == 404 and not required:
+            return pd.DataFrame(columns=columns), None
+        raise
+
+    if isinstance(file, list):
+        raise ValueError(f"Expected a CSV file at {path}")
+    # The contents endpoint can omit the payload for files larger than 1 MB.
+    blob = repo.get_git_blob(file.sha) if file.encoding == "none" else file
+    if blob.encoding != "base64":
+        raise ValueError(f"Could not read CSV content at {path}")
+    content = base64.b64decode("".join(blob.content.split()), validate=True).decode("utf-8-sig")
+    df = pd.read_csv(StringIO(content), dtype=str, keep_default_na=False) if content.strip() else pd.DataFrame()
+    if required and not set(columns).issubset(df.columns):
+        raise ValueError(f"Missing required columns in {path}")
+    for col in columns:
+        if col not in df.columns:
+            df[col] = ""
+    # Retain any additional columns already stored in GitHub.
+    return df, file.sha
+
+
+def read_csv(path, columns):
+    df, csv_versions[path] = read_csv_version(get_repo(), path, columns, github_branch())
+    return df
 
 
 def write_csv(path, df, message):
     repo = get_repo()
-    branch = st.secrets.get("GITHUB_BRANCH", "main")
+    branch = github_branch()
     content = df.to_csv(index=False)
-    try:
-        file = repo.get_contents(path, ref=branch)
-        repo.update_file(path, message, content, file.sha, branch=branch)
-    except Exception:
-        repo.create_file(path, message, content, branch=branch)
+    sha = csv_versions[path]
+    if sha is None:
+        result = repo.create_file(path, message, content, branch=branch)
+    else:
+        result = repo.update_file(path, message, content, sha, branch=branch)
+    csv_versions[path] = result["content"].sha
 
 
-def add_log(container_id, action, old_value="", new_value="", note=""):
-    logs = read_csv("data/container_logs.csv", LOG_COLUMNS)
-    new_log = {
+def log_entry(container_id, action, old_value="", new_value="", note=""):
+    return {
         "log_id": str(uuid.uuid4()),
         "container_id": container_id,
         "action": action,
@@ -322,17 +351,60 @@ def add_log(container_id, action, old_value="", new_value="", note=""):
         "note": note,
         "created_at": now_str(),
     }
-    logs = pd.concat([logs, pd.DataFrame([new_log])], ignore_index=True)
-    write_csv("data/container_logs.csv", logs, "Update container logs")
+
+
+def add_log(container_id, action, old_value="", new_value="", note=""):
+    logs = read_csv(LOGS_PATH, LOG_COLUMNS)
+    logs = pd.concat([logs, pd.DataFrame([log_entry(container_id, action, old_value, new_value, note)])],
+                     ignore_index=True)
+    write_csv(LOGS_PATH, logs, "Update container logs")
+
+
+def load_login_users():
+    required_columns = ["username", "password_sha256", "role", "supplier_name", "active"]
+    for attempt in range(3):
+        try:
+            users, _ = read_csv_version(get_repo(), USERS_PATH, required_columns, github_branch(), required=True)
+            return users
+        except (GithubException, ConnectionError, Timeout) as exc:
+            if isinstance(exc, GithubException) and exc.status not in (408, 429, 500, 502, 503, 504):
+                raise
+            if attempt == 2:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+
+
+def normalize_username(value):
+    return value.strip().casefold()
+
+
+def authenticate(users, username, password):
+    if not username.strip() or not password:
+        return None
+    # Prefer an exact match to preserve legacy accounts that differ only in case.
+    stored_names = users["username"].str.strip()
+    matches = users[stored_names == username.strip()]
+    if matches.empty:
+        matches = users[stored_names.str.casefold() == normalize_username(username)]
+    if len(matches) != 1:
+        return None
+
+    user = matches.iloc[0]
+    role = user["role"].strip().lower()
+    stored_hash = user["password_sha256"].strip().lower()
+    if (
+        user["active"].strip().lower() == "true"
+        and role in {"admin", "handler", "supplier"}
+        and (role != "supplier" or user["supplier_name"].strip())
+        and stored_hash.isascii()
+        and hmac.compare_digest(sha256_hash(password), stored_hash)
+    ):
+        return user
+    return None
 
 
 def login():
-    users = read_csv("data/users.csv", USER_COLUMNS)
-
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-
-    if st.session_state.logged_in:
+    if st.session_state.get("logged_in", False):
         return True
 
     st.markdown("""
@@ -346,29 +418,28 @@ def login():
     st.markdown('<div class="section-title">Login</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Enter your username and password.</div>', unsafe_allow_html=True)
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    with st.form("login_form", clear_on_submit=True):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
 
-    if st.button("Login", use_container_width=True):
-        match = users[
-            (users["username"] == username.strip())
-            & (users["active"].astype(str).str.lower() == "true")
-        ]
-
-        if match.empty:
-            st.error("Wrong username or password")
+    if submitted:
+        try:
+            users = load_login_users()
+        except Exception:
+            logger.exception("Could not load the login user list")
+            st.error("Login is temporarily unavailable. Please try again.")
             return False
 
-        user = match.iloc[0]
-
-        if sha256_hash(password) == user["password_sha256"]:
+        user = authenticate(users, username, password)
+        if user is None:
+            st.error("Wrong username or password")
+        else:
             st.session_state.logged_in = True
             st.session_state.username = user["username"]
-            st.session_state.role = user["role"]
+            st.session_state.role = user["role"].strip().lower()
             st.session_state.supplier_name = user["supplier_name"]
             st.rerun()
-        else:
-            st.error("Wrong username or password")
 
     st.markdown('</div>', unsafe_allow_html=True)
     return False
@@ -377,24 +448,27 @@ def login():
 if not login():
     st.stop()
 
-
-containers = read_csv("data/containers.csv", CONTAINER_COLUMNS)
-suppliers = read_csv("data/suppliers.csv", SUPPLIER_COLUMNS)
-users = read_csv("data/users.csv", USER_COLUMNS)
-requests = read_csv("data/requests.csv", REQUEST_COLUMNS)
-
 role = st.session_state.role
 is_admin = role == "admin"
 is_handler = role == "handler"
 is_supplier = role == "supplier"
 user_supplier = st.session_state.supplier_name
 
+try:
+    containers = read_csv(CONTAINERS_PATH, CONTAINER_COLUMNS)
+    suppliers = read_csv("data/suppliers.csv", SUPPLIER_COLUMNS)
+    requests = read_csv("data/requests.csv", REQUEST_COLUMNS) if not is_handler else None
+except Exception:
+    logger.exception("Could not load tracker data")
+    st.error("Tracker data is temporarily unavailable. Please try again.")
+    st.stop()
+
 if is_supplier:
     containers_view = containers[containers["supplier"] == user_supplier].copy()
     requests_view = requests[requests["supplier"] == user_supplier].copy()
 else:
     containers_view = containers.copy()
-    requests_view = requests.copy()
+    requests_view = requests.copy() if requests is not None else None
 
 active_view = containers_view[~containers_view["status"].isin(["Completed", "Cancelled"])].copy()
 
@@ -408,7 +482,7 @@ st.markdown(f"""
 <div class="top-shell">
     <div class="app-title">Container Tracker GPC</div>
     <div class="app-subtitle">Import container overview, ETA tracking and supplier portal</div>
-    <div class="user-pill">👤 {st.session_state.username} &nbsp; | &nbsp; Role: {role}</div>
+    <div class="user-pill">👤 {escape(st.session_state.username)} &nbsp; | &nbsp; Role: {role}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -483,411 +557,372 @@ with k4:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Delayed</div><div class="metric-value">{delayed}</div></div>', unsafe_allow_html=True)
 
 
-def save_edited_containers(original_df, edited_df):
-    global containers
+BULK_FIELDS = [
+    "container_number", "invoice_number", "supplier", "origin_port", "destination_port",
+    "departure_week", "arrival_week", "eta_date", "status", "shipping_line", "bl_number",
+]
+EDIT_FIELDS = set(BULK_FIELDS) | {"booking_number", "notes", "shipping_cost"}
+TABLE_COLUMNS = BULK_FIELDS + ["notes"]
+TABLE_LABELS = {
+    "container_number": "Container No.",
+    "invoice_number": "Invoice No.",
+    "supplier": "Supplier",
+    "origin_port": "Origin Port",
+    "destination_port": "Destination Port",
+    "departure_week": "Departure Week",
+    "arrival_week": "Arrival Week",
+    "eta_date": "ETA Date",
+    "status": "Status",
+    "shipping_line": "Shipping Line",
+    "bl_number": "B/L No.",
+    "notes": "Notes",
+}
 
-    changes = 0
 
-    for _, edited_row in edited_df.iterrows():
-        cid = edited_row["container_id"]
-        original_row = original_df[original_df["container_id"] == cid]
+class ContainerChangeError(Exception):
+    pass
 
-        if original_row.empty:
+
+def can_manage_container(row, *, delete=False):
+    if is_admin or (is_handler and not delete):
+        return True
+    return is_supplier and bool(user_supplier.strip()) and row["supplier"] == user_supplier
+
+
+def save_container_changes(originals, *, edits=None, delete=False):
+    """Save the container and audit CSVs in the same GitHub commit."""
+    if not originals:
+        raise ContainerChangeError("Select at least one container.")
+    repo = get_repo()
+    ref = repo.get_git_ref(f"heads/{github_branch()}")
+    head = ref.object.sha
+    latest, _ = read_csv_version(repo, CONTAINERS_PATH, CONTAINER_COLUMNS, head)
+    target_ids = [row["container_id"] for row in originals]
+    targets = latest[latest["container_id"].isin(target_ids)]
+    if len(targets) != len(target_ids) or not targets["container_id"].is_unique:
+        raise ContainerChangeError("A selected container is missing or has a duplicate ID. Refresh the overview.")
+    by_id = targets.set_index("container_id", drop=False)
+    entries = []
+    actor = st.session_state.username
+
+    for original in originals:
+        container_id = original["container_id"]
+        current = by_id.loc[container_id]
+        if not container_id or not can_manage_container(current, delete=delete):
+            raise ContainerChangeError("You do not have permission to change this container.")
+        if current.to_dict() != original:
+            raise ContainerChangeError("A selected container has changed. Refresh the overview and try again.")
+
+        if delete:
+            entries.append(log_entry(container_id, "Container deleted", container_label(current),
+                                     note=f"Deleted by {actor}"))
             continue
 
-        original_row = original_row.iloc[0]
-        main_idx = containers[containers["container_id"] == cid].index
+        fields = edits[container_id]
+        if not fields.keys() <= EDIT_FIELDS:
+            raise ContainerChangeError("The change includes unsupported container fields.")
+        if "supplier" in fields and not is_admin:
+            raise ContainerChangeError("Only an admin can change the supplier.")
+        matches = latest["container_id"] == container_id
+        for column, value in fields.items():
+            latest.loc[matches, column] = value
+        latest.loc[matches, "updated_at"] = now_str()
+        if "status" in fields:
+            entries.append(log_entry(container_id, "Status changed", current["status"], fields["status"],
+                                     note=f"Updated by {actor}"))
+        entries.append(log_entry(container_id, "Details updated", note=f"Updated by {actor}"))
 
-        if len(main_idx) == 0:
-            continue
+    if delete:
+        latest = latest[~latest["container_id"].isin(target_ids)]
 
-        main_idx = main_idx[0]
-
-        editable_columns = [
-            "container_number", "invoice_number", "origin_port", "destination_port",
-            "departure_week", "arrival_week", "eta_date", "status",
-            "shipping_line", "booking_number", "bl_number"
-        ]
-
-        for col in editable_columns:
-            if col not in edited_row.index or col not in original_row.index:
-                continue
-            old = "" if pd.isna(original_row[col]) else str(original_row[col])
-            new = "" if pd.isna(edited_row[col]) else str(edited_row[col])
-
-            if col == "eta_date" and new:
-                new = str(pd.to_datetime(new).date())
-
-            if col == "status":
-                new = clean_status(new)
-
-            if old != new:
-                containers.at[main_idx, col] = new
-                containers.at[main_idx, "updated_at"] = now_str()
-                changes += 1
-
-                if col == "status":
-                    add_log(cid, "Status changed", old, new)
-
-    if changes > 0:
-        write_csv("data/containers.csv", containers, "Update containers from dashboard")
-        st.success("Changes saved.")
-        st.rerun()
-    else:
-        st.info("No changes detected.")
+    logs, _ = read_csv_version(repo, LOGS_PATH, LOG_COLUMNS, head)
+    logs = pd.concat([logs, pd.DataFrame(entries)], ignore_index=True)
+    parent = repo.get_git_commit(head)
+    tree = repo.create_git_tree([
+        InputGitTreeElement(CONTAINERS_PATH, "100644", "blob", content=latest.to_csv(index=False)),
+        InputGitTreeElement(LOGS_PATH, "100644", "blob", content=logs.to_csv(index=False)),
+    ], base_tree=parent.tree)
+    message = "Delete selected containers" if delete else "Update selected containers"
+    commit = repo.create_git_commit(message, tree, [parent])
+    # A concurrent write advances the ref and makes this update non-fast-forward.
+    ref.edit(commit.sha, force=False)
 
 
-def get_dashboard_selected_delete_ids(editor_key, editor_df):
-    state = st.session_state.get(editor_key, {})
-    edited_rows = {}
-
-    if isinstance(state, dict):
-        edited_rows = state.get("edited_rows", {}) or {}
-
-    selected_ids = []
-
-    for row_index, changes in edited_rows.items():
-        try:
-            row_index = int(row_index)
-        except Exception:
-            continue
-
-        if row_index < 0 or row_index >= len(editor_df):
-            continue
-
-        if bool(changes.get("_delete", False)):
-            selected_ids.append(str(editor_df.iloc[row_index]["container_id"]))
-
-    return selected_ids
+def submit_container_changes(originals, *, edits=None, delete=False):
+    try:
+        save_container_changes(originals, edits=edits, delete=delete)
+    except ContainerChangeError as exc:
+        st.error(str(exc))
+        return False
+    except Exception:
+        logger.exception("Could not save container changes")
+        st.error("The change could not be confirmed. Refresh the overview before trying again.")
+        return False
+    return True
 
 
-def delete_dashboard_selected_containers(selected_ids):
-    global containers
+def filter_values(series):
+    return sorted(set(series) - {""}, key=str.casefold)
 
-    if not selected_ids:
-        st.error("Select at least one container first.")
-        return
 
-    containers_latest = read_csv("data/containers.csv", CONTAINER_COLUMNS)
-    selected_rows = containers_latest[
-        containers_latest["container_id"].isin(selected_ids)
-    ].copy()
+def filter_containers(view, key):
+    search = st.text_input(
+        "Search containers", placeholder="Container No., Invoice No., Supplier or B/L No.",
+        key=f"{key}_search",
+    ).strip()
+    c1, c2, c3, c4 = st.columns(4)
 
-    if selected_rows.empty:
-        st.error("Selected containers were not found. Refresh and try again.")
-        return
-
-    labels = selected_rows.apply(container_label, axis=1).tolist()
-
-    containers = containers_latest[
-        ~containers_latest["container_id"].isin(selected_ids)
-    ].copy()
-
-    write_csv(
-        "data/containers.csv",
-        containers,
-        f"Delete {len(selected_rows)} selected container(s)"
-    )
-
-    for _, row in selected_rows.iterrows():
-        add_log(
-            row["container_id"],
-            "Container deleted",
-            container_label(row),
-            "",
-            "Deleted from dashboard selection"
+    def choose(column, label, values, widget_key):
+        widget_key = f"{key}_{widget_key}"
+        previous = st.session_state.get(widget_key)
+        if previous is not None and previous not in values:
+            values = values + [previous]
+        return column.selectbox(
+            label, [None] + values, key=widget_key,
+            format_func=lambda value: "All" if value is None else value,
         )
 
-    st.session_state.pop("dashboard_editor", None)
-    st.success(f"Deleted {len(selected_rows)} container(s): " + ", ".join(labels))
+    if is_supplier:
+        c1.text_input("Supplier", value=user_supplier, disabled=True, key=f"{key}_own_supplier")
+        supplier = None
+    else:
+        supplier = choose(c1, "Supplier", filter_values(view["supplier"]), "supplier")
+    status = choose(c2, "Status", list(dict.fromkeys(STATUSES + filter_values(view["status"]))), "status")
+    arrival = choose(c3, "Arrival Week", filter_values(view["arrival_week"]), "arrival")
+    sort = c4.selectbox("Sort arrival week", ["Ascending", "Descending"], key=f"{key}_sort")
+    return apply_container_filters(view, search, supplier, status, arrival, sort == "Ascending")
+
+
+def apply_container_filters(view, search, supplier, status, arrival, ascending):
+    if search:
+        matches = pd.Series(False, index=view.index)
+        for field in ("container_number", "invoice_number", "supplier", "bl_number"):
+            matches |= view[field].str.contains(search, case=False, regex=False, na=False)
+        view = view[matches]
+    for field, value in (("supplier", supplier), ("status", status), ("arrival_week", arrival)):
+        if value is not None:
+            view = view[view[field] == value]
+    return view.sort_values(["arrival_week", "eta_date", "container_id"], ascending=ascending)
+
+
+def finish_container_action(key, message=None):
+    st.session_state.pop(f"{key}_action", None)
+    if message:
+        st.session_state[f"{key}_notice"] = message
+        generation_key = f"{key}_selection_generation"
+        st.session_state[generation_key] = st.session_state.get(generation_key, 0) + 1
     st.rerun()
 
 
-if st.session_state.page == "Dashboard":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Active Containers</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Completed and cancelled containers are hidden automatically.</div>', unsafe_allow_html=True)
+def display_tracking(row):
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Tracking Status", row["tracking_status"] or "Not synced")
+    t2.metric("Live ETA", row["tracking_eta"] or "–")
+    t3.metric("Last Updated", row["tracking_updated_at"] or "–")
 
-    f1, f2, f3, f4 = st.columns(4)
+    t4, t5 = st.columns(2)
+    t4.text_input("Last Event", value=row["last_event"], disabled=True)
+    t5.text_input("Last Location", value=row["last_location"], disabled=True)
 
-    search = f1.text_input("Search")
-    status_filter = f2.selectbox("Status", ["All"] + STATUSES)
-    week_sort = f3.selectbox("Sort arrival week", ["Ascending", "Descending"])
+    t6, t7 = st.columns(2)
+    t6.text_input("Vessel", value=row["vessel"], disabled=True)
+    t7.text_input("Voyage", value=row["voyage"], disabled=True)
 
-    if is_admin or is_handler:
-        supplier_filter = f4.selectbox("Supplier", ["All"] + supplier_options)
+    if tracking_ready(row):
+        if st.button("Track now"):
+            st.info("Tracking API is nog niet gekoppeld. Deze knop staat alvast klaar voor ShipsGo/Vizion/etc.")
     else:
-        supplier_filter = user_supplier
-        f4.text_input("Supplier", value=user_supplier, disabled=True)
-
-    dashboard_df = active_view.copy()
-
-    if search:
-        dashboard_df = dashboard_df[
-            dashboard_df["container_number"].str.contains(search, case=False, na=False)
-            | dashboard_df["invoice_number"].str.contains(search, case=False, na=False)
-            | dashboard_df["bl_number"].str.contains(search, case=False, na=False)
-        ]
-
-    if status_filter != "All":
-        dashboard_df = dashboard_df[dashboard_df["status"] == status_filter]
-
-    if (is_admin or is_handler) and supplier_filter != "All":
-        dashboard_df = dashboard_df[dashboard_df["supplier"] == supplier_filter]
-
-    dashboard_df = dashboard_df.sort_values(
-        by=["arrival_week", "eta_date"],
-        ascending=(week_sort == "Ascending")
-    )
-
-    if dashboard_df.empty:
-        st.info("No active containers.")
-    else:
-        editable_cols = [
-            "container_id", "container_number", "invoice_number", "supplier",
-            "origin_port", "destination_port", "departure_week", "arrival_week",
-            "eta_date", "status", "shipping_line", "bl_number"
-        ]
-
-        editor_df = dashboard_df[editable_cols].copy()
-        editor_df["eta_date"] = pd.to_datetime(editor_df["eta_date"], errors="coerce").dt.date
-        editor_df["status"] = editor_df["status"].apply(clean_status)
-
-        if is_admin:
-            editor_df.insert(0, "_delete", False)
-
-            selected_delete_ids = get_dashboard_selected_delete_ids(
-                "dashboard_editor",
-                editor_df
-            )
-
-            dcol1, dcol2 = st.columns([1.4, 3.6])
-
-            with dcol1:
-                delete_clicked = st.button(
-                    "🗑️ Delete selected container(s)",
-                    use_container_width=True,
-                    key="delete_selected_dashboard_btn"
-                )
-
-            with dcol2:
-                if selected_delete_ids:
-                    st.warning(
-                        f"{len(selected_delete_ids)} container(s) selected for deletion. "
-                        "Click the delete button to remove them."
-                    )
-                else:
-                    st.caption("Tick one or more rows in the Delete column to delete containers.")
-
-            if delete_clicked:
-                delete_dashboard_selected_containers(selected_delete_ids)
-
-        disabled_columns = ["container_id", "supplier"]
-
-        column_config = {
-            "container_id": None,
-            "container_number": st.column_config.TextColumn("Cont No."),
-            "invoice_number": st.column_config.TextColumn("Inv No."),
-            "supplier": st.column_config.TextColumn("Suppl"),
-            "origin_port": st.column_config.TextColumn("Origin Port"),
-            "destination_port": st.column_config.TextColumn("Destination Port"),
-            "departure_week": st.column_config.SelectboxColumn("Departure WK", options=week_options(), required=True),
-            "arrival_week": st.column_config.SelectboxColumn("Arrival WK", options=week_options(), required=True),
-            "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
-            "status": st.column_config.SelectboxColumn("Status", options=STATUSES, required=True),
-            "shipping_line": st.column_config.TextColumn("Shipper"),
-            "bl_number": st.column_config.TextColumn("B/L No."),
-        }
-
-        if is_admin:
-            column_config["_delete"] = st.column_config.CheckboxColumn(
-                "Delete",
-                help="Tick rows here, then use the delete button above.",
-                default=False
-            )
-        else:
-            disabled_columns = ["container_id", "supplier"]
-
-        edited = st.data_editor(
-            editor_df,
-            use_container_width=True,
-            hide_index=True,
-            disabled=disabled_columns,
-            column_config=column_config,
-            key="dashboard_editor",
-        )
-
-        edited["status"] = edited["status"].apply(clean_status)
-
-        if st.button("Save dashboard changes", use_container_width=True):
-            original_df = dashboard_df[editable_cols].copy()
-            edited_save = edited[editable_cols].copy()
-            save_edited_containers(original_df, edited_save)
+        st.warning("Tracking werkt pas zodra Container Number, B/L Number of Booking Number is ingevuld.")
 
 
-        st.divider()
-        st.subheader("Open container details")
-
-        detail_options = dashboard_df.apply(container_label, axis=1).tolist()
-        detail_map = dict(zip(detail_options, dashboard_df["container_id"].tolist()))
-
-        selected_detail = st.selectbox(
-            "Select container",
-            detail_options,
-            key="dashboard_detail_select"
-        )
-
-        detail_id = detail_map[selected_detail]
-        detail_row = containers[containers["container_id"] == detail_id].iloc[0]
-
-        general_tab, tracking_tab, planning_tab = st.tabs(["General", "Live Tracking", "Notes / Cost"])
-
-        with general_tab:
-            g1, g2, g3 = st.columns(3)
-            detail_container_number = g1.text_input(
-                "Container Number",
-                value=detail_row.get("container_number", ""),
-                key=f"detail_container_number_{detail_id}"
-            )
-            detail_invoice_number = g2.text_input(
-                "Invoice Number",
-                value=detail_row.get("invoice_number", ""),
-                key=f"detail_invoice_number_{detail_id}"
-            )
-            detail_shipping_line = g3.text_input(
-                "Shipping Line",
-                value=detail_row.get("shipping_line", ""),
-                key=f"detail_shipping_line_{detail_id}"
-            )
-
-            g4, g5 = st.columns(2)
-            detail_booking_number = g4.text_input(
-                "Booking Number",
-                value=detail_row.get("booking_number", ""),
-                key=f"detail_booking_number_{detail_id}"
-            )
-            detail_bl_number = g5.text_input(
-                "B/L Number",
-                value=detail_row.get("bl_number", ""),
-                key=f"detail_bl_number_{detail_id}"
-            )
-
-        with tracking_tab:
-            t1, t2, t3 = st.columns(3)
-            t1.metric("Tracking Status", detail_row.get("tracking_status", "") or "Not synced")
-            t2.metric("Live ETA", detail_row.get("tracking_eta", "") or "-")
-            t3.metric("Last Updated", detail_row.get("tracking_updated_at", "") or "-")
-
-            t4, t5 = st.columns(2)
-            t4.text_input("Last Event", value=detail_row.get("last_event", ""), disabled=True, key=f"tracking_last_event_{detail_id}")
-            t5.text_input("Last Location", value=detail_row.get("last_location", ""), disabled=True, key=f"tracking_last_location_{detail_id}")
-
-            t6, t7, t8 = st.columns(3)
-            t6.text_input("Vessel", value=detail_row.get("vessel", ""), disabled=True, key=f"tracking_vessel_{detail_id}")
-            t7.text_input("Voyage", value=detail_row.get("voyage", ""), disabled=True, key=f"tracking_voyage_{detail_id}")
-
-
-            if tracking_ready(detail_row):
-                if st.button("Track now", use_container_width=True, key=f"track_now_{detail_id}"):
-                    st.info("Tracking API is nog niet gekoppeld. Deze knop staat alvast klaar voor ShipsGo/Vizion/etc.")
+def render_container_edit(row, key):
+    form_key = f"{key}_edit_{row['container_id']}"
+    with st.form(form_key):
+        general, planning = st.tabs(["General", "Notes / Cost"])
+        values = {}
+        with general:
+            c1, c2, c3 = st.columns(3)
+            values["container_number"] = c1.text_input("Container Number", row["container_number"])
+            values["invoice_number"] = c2.text_input("Invoice Number", row["invoice_number"])
+            if is_admin:
+                names = sorted(set(supplier_options) | {row["supplier"]}, key=str.casefold)
+                values["supplier"] = c3.selectbox("Supplier", names, index=names.index(row["supplier"]))
             else:
-                st.warning("Tracking werkt pas zodra Container Number, B/L Number of Booking Number is ingevuld.")
+                c3.text_input("Supplier", row["supplier"], disabled=True)
 
-        with planning_tab:
-            p1, p2 = st.columns(2)
-            with p1:
-                st.markdown("#### Notes")
-                detail_notes = st.text_area(
-                    "Notes",
-                    value=detail_row.get("notes", ""),
-                    height=180,
-                    key=f"notes_{detail_id}"
-                )
+            c4, c5, c6 = st.columns(3)
+            values["origin_port"] = c4.text_input("Origin Port", row["origin_port"])
+            values["destination_port"] = c5.text_input("Destination Port", row["destination_port"])
+            values["shipping_line"] = c6.text_input("Shipping Line", row["shipping_line"])
 
-            with p2:
-                st.markdown("#### Shipping Cost")
-                detail_shipping_cost = st.text_input(
-                    "Shipping Cost",
-                    value=detail_row.get("shipping_cost", ""),
-                    key=f"shipping_cost_{detail_id}"
-                )
+            c7, c8, c9 = st.columns(3)
+            for column, field, label in [
+                (c7, "departure_week", "Departure Week"), (c8, "arrival_week", "Arrival Week"),
+                (c9, "status", "Status"),
+            ]:
+                choices = STATUSES if field == "status" else week_options()
+                choices = list(dict.fromkeys([row[field]] + choices))
+                values[field] = column.selectbox(label, choices, format_func=lambda value: value or "—")
 
-        if st.button("Save details", use_container_width=True):
-            idx = containers[containers["container_id"] == detail_id].index[0]
-            clean_container_number = detail_container_number.strip() if detail_container_number.strip() else "PENDING"
-            containers.at[idx, "container_number"] = clean_container_number
-            containers.at[idx, "invoice_number"] = detail_invoice_number.strip()
-            containers.at[idx, "shipping_line"] = detail_shipping_line.strip()
-            containers.at[idx, "booking_number"] = detail_booking_number.strip()
-            containers.at[idx, "bl_number"] = detail_bl_number.strip()
-            containers.at[idx, "notes"] = detail_notes.strip()
-            containers.at[idx, "shipping_cost"] = detail_shipping_cost.strip()
-            containers.at[idx, "updated_at"] = now_str()
+            c10, c11, c12 = st.columns(3)
+            parsed_eta = pd.to_datetime(row["eta_date"], errors="coerce")
+            initial_eta = None if pd.isna(parsed_eta) else parsed_eta.date()
+            eta = c10.date_input("ETA Date", value=initial_eta)
+            values["eta_date"] = row["eta_date"] if eta == initial_eta else str(eta or "")
+            values["booking_number"] = c11.text_input("Booking Number", row["booking_number"])
+            values["bl_number"] = c12.text_input("B/L Number", row["bl_number"])
 
-            write_csv("data/containers.csv", containers, f"Update details {detail_row.get('container_number', '')}")
-            add_log(detail_id, "Details updated", "", "", "General details / notes / shipping cost updated")
-            st.success("Details saved.")
+        with planning:
+            values["notes"] = st.text_area("Notes", value=row["notes"])
+            values["shipping_cost"] = st.text_input("Shipping Cost", row["shipping_cost"])
+        submitted = st.form_submit_button("Save Changes", type="primary")
+
+    if submitted:
+        if values["container_number"] != row["container_number"]:
+            values["container_number"] = values["container_number"].strip() or "PENDING"
+        changes = {field: value for field, value in values.items() if value != row[field]}
+        if not changes:
+            st.info("No changes detected.")
+        elif submit_container_changes([row], edits={row["container_id"]: changes}):
+            finish_container_action(key, "Container updated.")
+
+    with st.expander("Live Tracking"):
+        display_tracking(row)
+
+
+def render_container_actions(selected, key):
+    action_key = f"{key}_action"
+    notice = st.session_state.pop(f"{key}_notice", None)
+    if notice:
+        st.success(notice)
+
+    action = st.session_state.get(action_key)
+    selected_ids = [row["container_id"] for row in selected]
+    if action and [row["container_id"] for row in action[1]] != selected_ids:
+        st.session_state.pop(action_key, None)
+        action = None
+
+    if action:
+        mode, originals = action
+        if mode == "delete":
+            st.warning("Permanently delete the following container(s)?")
+            for row in originals:
+                st.text(container_label(row))
+            cancel, confirm = st.columns(2)
+            if cancel.button("Cancel", key=f"{key}_cancel_delete"):
+                finish_container_action(key)
+            if confirm.button("Confirm deletion", type="primary", key=f"{key}_confirm_delete"):
+                if submit_container_changes(originals, delete=True):
+                    count = len(originals)
+                    finish_container_action(key, "Container deleted." if count == 1 else f"{count} containers deleted.")
+        else:
+            row = originals[0]
+            st.subheader(f"Edit · {container_label(row)}")
+            if st.button("Back to overview", key=f"{key}_back"):
+                finish_container_action(key)
+            render_container_edit(row, key)
+        return
+
+    c1, c2, c3 = st.columns([1, 1, 3])
+    editable = len(selected) == 1 and can_manage_container(selected[0])
+    if c1.button("Edit", type="primary", disabled=not editable, key=f"{key}_edit"):
+        st.session_state[action_key] = ("edit", selected)
+        st.rerun()
+    if not is_handler:
+        deletable = bool(selected) and all(can_manage_container(row, delete=True) for row in selected)
+        if c2.button("Delete", disabled=not deletable, key=f"{key}_delete"):
+            st.session_state[action_key] = ("delete", selected)
             st.rerun()
 
+    if len(selected) == 1:
+        c3.text(container_label(selected[0]))
+    elif selected:
+        c3.caption(f"{len(selected)} containers selected.")
+    else:
+        c3.caption("Select a row using the checkbox at the left of the table.")
 
 
-    st.markdown('</div>', unsafe_allow_html=True)
+def render_container_overview(view, key):
+    actions = st.container()
+    filtered = filter_containers(view, key)
+    selected = []
+    if filtered.empty:
+        st.info("No containers match your search and filters.")
+    else:
+        table = filtered[TABLE_COLUMNS].copy()
+        table["status"] = table["status"].map(status_icon)
+        ids = filtered["container_id"].tolist()
+        selection_signature = sha256_hash(json.dumps(ids))
+        generation = st.session_state.get(f"{key}_selection_generation", 0)
+        selection = st.dataframe(
+            table, use_container_width=True, hide_index=True, column_config=TABLE_LABELS,
+            key=f"{key}_rows_{generation}_{selection_signature}", on_select="rerun",
+            selection_mode="single-row" if is_handler else "multi-row",
+        )
+        positions = sorted(set(i for i in selection.selection.rows if 0 <= i < len(filtered)))
+        selected = filtered.iloc[positions].to_dict("records")
+    with actions:
+        render_container_actions(selected, key)
+    return filtered
+
+
+def render_bulk_editor(filtered):
+    if filtered.empty:
+        return
+    with st.expander("Edit multiple rows"):
+        editable = filtered[filtered.apply(can_manage_container, axis=1)]
+        if editable.empty:
+            return
+        editor_df = editable[BULK_FIELDS].reset_index(drop=True)
+        editor_df["eta_date"] = pd.to_datetime(editor_df["eta_date"], errors="coerce").dt.date
+        editor_df["status"] = editor_df["status"].map(clean_status)
+        weeks = sorted(set(week_options()) | set(editor_df["departure_week"]) | set(editor_df["arrival_week"]))
+        config = dict(TABLE_LABELS)
+        config.update({
+            "departure_week": st.column_config.SelectboxColumn("Departure Week", options=weeks),
+            "arrival_week": st.column_config.SelectboxColumn("Arrival Week", options=weeks),
+            "eta_date": st.column_config.DateColumn("ETA Date", format="YYYY-MM-DD"),
+            "status": st.column_config.SelectboxColumn("Status", options=list(dict.fromkeys(STATUSES + list(editor_df["status"])))),
+        })
+        # Never apply a positional widget edit to a different row or newer snapshot.
+        signature = sha256_hash(json.dumps(editable.to_dict("records")))
+        with st.form(f"dashboard_bulk_{signature}"):
+            edited = st.data_editor(editor_df, use_container_width=True, hide_index=True,
+                                    disabled=["supplier", "notes"], column_config=config)
+            submitted = st.form_submit_button("Save dashboard changes")
+
+        if submitted:
+            originals = []
+            changes = {}
+            for position, row in enumerate(editable.to_dict("records")):
+                before = editor_df.iloc[position].fillna("")
+                after = edited.iloc[position].fillna("")
+                fields = {col: str(after[col]) for col in BULK_FIELDS if col != "supplier" and before[col] != after[col]}
+                if fields:
+                    originals.append(row)
+                    changes[row["container_id"]] = fields
+            if not changes:
+                st.info("No changes detected.")
+            elif submit_container_changes(originals, edits=changes):
+                finish_container_action("dashboard", "Changes saved.")
+
+
+if st.session_state.page == "Dashboard":
+    st.subheader("Container Overview")
+    include_closed = st.checkbox("Include completed and cancelled containers")
+    dashboard_view = render_container_overview(containers_view if include_closed else active_view, "dashboard")
+    render_bulk_editor(dashboard_view)
 
 
 elif st.session_state.page == "Containers" and not is_handler:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Containers</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Create, review and update import containers.</div>', unsafe_allow_html=True)
-
-    tab1, tab2 = st.tabs(["Overview / Edit", "Add Container"])
+    st.subheader("Containers")
+    tab1, tab2 = st.tabs(["Overview", "Add Container"])
 
     with tab1:
-        f1, f2, f3, f4 = st.columns(4)
-
-        search = f1.text_input("Search container / invoice / B/L")
-        status_filter = f2.selectbox("Status", ["All"] + STATUSES)
-        arrival_filter = f3.selectbox("Arrival Week", ["All"] + week_options())
-        sort_order = f4.selectbox("Sort arrival week", ["Ascending", "Descending"])
-
-        filtered = containers_view.copy()
-
-        if search:
-            filtered = filtered[
-                filtered["container_number"].str.contains(search, case=False, na=False)
-                | filtered["invoice_number"].str.contains(search, case=False, na=False)
-                | filtered["bl_number"].str.contains(search, case=False, na=False)
-            ]
-
-        if status_filter != "All":
-            filtered = filtered[filtered["status"] == status_filter]
-
-        if arrival_filter != "All":
-            filtered = filtered[filtered["arrival_week"] == arrival_filter]
-
-        filtered = filtered.sort_values(by=["arrival_week", "eta_date"], ascending=(sort_order == "Ascending"))
-
-        table_df = filtered[
-            [
-                "container_number", "invoice_number", "supplier",
-                "origin_port", "destination_port", "departure_week",
-                "arrival_week", "eta_date", "status",
-                "shipping_line", "bl_number", "notes"
-            ]
-        ].copy()
-
-        table_df["status"] = table_df["status"].apply(status_icon)
-
-        export_df = filtered[[
-            "departure_week", "arrival_week", "eta_date", "status", "notes"
-        ]].copy()
-        export_df = export_df.rename(columns={
-            "departure_week": "Departure Week",
-            "arrival_week": "Arrival Week",
-            "eta_date": "ETA Date",
-            "status": "Status",
-            "notes": "Notes",
-        })
-
+        filtered = render_container_overview(containers_view, "containers")
+        export_df = filtered[["departure_week", "arrival_week", "eta_date", "status", "notes"]].rename(
+            columns=TABLE_LABELS
+        )
         st.download_button(
             label="📥 Download planning as Excel",
             data=dataframe_to_excel(export_df),
@@ -896,120 +931,6 @@ elif st.session_state.page == "Containers" and not is_handler:
             use_container_width=True,
             key="download_container_planning_excel",
         )
-
-        st.dataframe(
-            table_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "container_number": "Container No.",
-                "invoice_number": "Invoice No.",
-                "origin_port": "Origin Port",
-                "destination_port": "Destination Port",
-                "departure_week": "Departure Week",
-                "arrival_week": "Arrival Week",
-                "eta_date": "ETA Date",
-                "shipping_line": "Shipping Line",
-                "booking_number": "Booking No.",
-                "bl_number": "B/L No.",
-            }
-        )
-
-        st.divider()
-        st.subheader("Edit Container")
-
-        if containers_view.empty:
-            st.info("No containers to edit.")
-        else:
-            selected_container = st.selectbox(
-                "Select container",
-                containers_view["container_number"].tolist(),
-            )
-
-            row = containers_view[containers_view["container_number"] == selected_container].iloc[0]
-
-            with st.form("edit_container_form"):
-                c1, c2, c3 = st.columns(3)
-
-                invoice_number = c1.text_input("Invoice Number", value=row["invoice_number"])
-
-                if is_admin:
-                    supplier = c2.selectbox(
-                        "Supplier",
-                        supplier_options if supplier_options else [row["supplier"]],
-                        index=supplier_options.index(row["supplier"]) if row["supplier"] in supplier_options else 0,
-                    )
-                else:
-                    supplier = user_supplier
-                    c2.text_input("Supplier", value=user_supplier, disabled=True)
-
-                status = c3.selectbox(
-                    "Status",
-                    STATUSES,
-                    index=STATUSES.index(row["status"]) if row["status"] in STATUSES else 0,
-                )
-
-                c4, c5, c6 = st.columns(3)
-                origin_port = c4.text_input("Origin Port", value=row["origin_port"])
-                destination_port = c5.text_input("Destination Port", value=row["destination_port"])
-                shipping_line = c6.text_input("Shipping Line", value=row["shipping_line"])
-
-                c7, c8, c9 = st.columns(3)
-                weeks = week_options()
-
-                departure_week = c7.selectbox(
-                    "Departure Week",
-                    weeks,
-                    index=weeks.index(row["departure_week"]) if row["departure_week"] in weeks else 0,
-                )
-
-                arrival_week = c8.selectbox(
-                    "Arrival Week",
-                    weeks,
-                    index=weeks.index(row["arrival_week"]) if row["arrival_week"] in weeks else 0,
-                )
-
-                eta_value = date.today()
-                if row["eta_date"]:
-                    parsed_eta = pd.to_datetime(row["eta_date"], errors="coerce")
-                    if not pd.isna(parsed_eta):
-                        eta_value = parsed_eta.date()
-
-                eta_date = c9.date_input("ETA Date", value=eta_value)
-                b1, b2 = st.columns(2)
-                booking_number = b1.text_input("Booking Number", value=row.get("booking_number", ""))
-                bl_number = b2.text_input("B/L Number", value=row["bl_number"])
-                shipping_cost = st.text_input("Shipping Cost", value=row.get("shipping_cost", ""))
-                notes = st.text_area("Notes", value=row["notes"])
-
-                save = st.form_submit_button("Save Changes")
-
-                if save:
-                    idx = containers[containers["container_id"] == row["container_id"]].index[0]
-                    old_status = containers.at[idx, "status"]
-
-                    containers.at[idx, "invoice_number"] = invoice_number
-                    containers.at[idx, "supplier"] = supplier
-                    containers.at[idx, "origin_port"] = origin_port
-                    containers.at[idx, "destination_port"] = destination_port
-                    containers.at[idx, "departure_week"] = departure_week
-                    containers.at[idx, "arrival_week"] = arrival_week
-                    containers.at[idx, "eta_date"] = str(eta_date)
-                    containers.at[idx, "status"] = status
-                    containers.at[idx, "shipping_line"] = shipping_line
-                    containers.at[idx, "booking_number"] = booking_number
-                    containers.at[idx, "bl_number"] = bl_number
-                    containers.at[idx, "notes"] = notes
-                    containers.at[idx, "shipping_cost"] = shipping_cost
-                    containers.at[idx, "updated_at"] = now_str()
-
-                    write_csv("data/containers.csv", containers, f"Update container {selected_container}")
-
-                    if old_status != status:
-                        add_log(row["container_id"], "Status changed", old_status, status)
-
-                    st.success("Container updated.")
-                    st.rerun()
 
     with tab2:
         with st.form("add_container_form"):
@@ -1340,6 +1261,7 @@ elif st.session_state.page == "Suppliers" and is_admin:
 
 
 elif st.session_state.page == "Users" and is_admin:
+    users = read_csv(USERS_PATH, USER_COLUMNS)
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Users</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Create admin, handler or supplier users.</div>', unsafe_allow_html=True)
@@ -1366,7 +1288,7 @@ elif st.session_state.page == "Users" and is_admin:
             if add_user:
                 if not username.strip() or not password:
                     st.error("Username and password are required.")
-                elif username.strip() in users["username"].tolist():
+                elif normalize_username(username) in users["username"].map(normalize_username).tolist():
                     st.error("Username already exists.")
                 elif role_input == "supplier" and not supplier_name:
                     st.error("Supplier user must be linked to a supplier.")
