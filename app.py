@@ -68,113 +68,171 @@ REQUEST_STATUSES = [
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
-    color: #111827;
+    --gpc-ink: light-dark(#0b1830, #eef3fa);
+    --gpc-copy: light-dark(#162641, #e2eaf5);
+    --gpc-muted: light-dark(#52627a, #b4c2d6);
+    --gpc-rule: light-dark(#cfd7e3, #40526d);
+    --gpc-background: light-dark(#f2f4f7, #141d2b);
+    --gpc-surface: light-dark(#fff, #202c40);
+    --gpc-blue: #224e84;
+    --gpc-gold: #c6a675;
+    background: var(--gpc-background);
+    color: var(--gpc-copy);
+    font-family: "Inter", system-ui, sans-serif;
+}
+.stApp [data-testid="stHeader"] {
+    background: var(--gpc-background);
 }
 .block-container {
-    padding-top: 3.8rem;
-    padding-bottom: 3rem;
-    max-width: 1500px;
+    max-width: 1720px;
+    padding: 3.35rem clamp(.75rem, 2vw, 1.85rem) 2.5rem;
+}
+.top-shell, .st-key-tracker_header {
+    background: linear-gradient(110deg, #0b1830, #142747 65%, #0b1830);
+    border: 1px solid #1e3252;
+    border-bottom: 2px solid var(--gpc-gold);
+    border-radius: 9px;
+    padding: .65rem .9rem;
+    box-shadow: 0 3px 12px #0b183014;
 }
 .top-shell {
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-    padding: 30px 30px;
-    border-radius: 22px;
-    color: white;
-    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
-    margin-top: 8px;
-    margin-bottom: 20px;
+    padding: .9rem 1.05rem;
 }
 .app-title {
-    font-size: 34px;
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    margin-bottom: 4px;
+    color: #fffdf7;
+    font-size: 1.15rem;
+    font-weight: 730;
+    letter-spacing: -.025em;
+    line-height: 1.25;
+}
+.st-key-tracker_header .app-title {
+    border-right: 1px solid #c6a67585;
+    padding-right: 1rem;
 }
 .app-subtitle {
-    font-size: 14px;
-    opacity: 0.82;
+    color: #d2dcea;
+    margin-top: .25rem;
+    font-size: .85rem;
 }
 .user-pill {
-    display: inline-block;
-    background: rgba(255,255,255,0.13);
-    border: 1px solid rgba(255,255,255,0.25);
-    padding: 8px 13px;
-    border-radius: 999px;
-    font-size: 13px;
-    margin-top: 14px;
+    color: #e7eef8;
+    font-size: .8rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
 }
-div.stButton > button {
-    border-radius: 999px;
-    border: 1px solid #d1d5db;
-    background: white;
-    color: #111827;
-    font-weight: 650;
-    height: 42px;
-    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+.stApp div.stButton > button,
+.stApp div.stFormSubmitButton > button,
+.stApp div.stDownloadButton > button {
+    border-radius: 7px;
+    font-weight: 640;
+    min-height: 2.15rem;
+    padding: .3rem .85rem;
 }
-div.stButton > button:hover {
-    border-color: #2563eb;
-    color: #1d4ed8;
-    background: #eff6ff;
+.stApp button[kind="secondary"] {
+    background-color: var(--gpc-surface);
+    border-color: var(--gpc-rule);
+    color: var(--gpc-copy);
 }
-.metric-card {
-    background: white;
-    padding: 22px 22px;
-    border-radius: 20px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+.stApp button[kind="secondary"]:hover:enabled {
+    background-color: light-dark(#edf3fb, #263a55);
+    border-color: #7892b5;
+    color: light-dark(#173760, #eef4ff);
+}
+.stApp button[kind]:disabled {
+    background-color: transparent;
+    border-color: var(--gpc-rule);
+    color: var(--gpc-muted);
+    opacity: .7;
+}
+.stApp button[kind="primary"]:enabled {
+    background-color: var(--gpc-blue);
+    border-color: var(--gpc-blue);
+    color: white;
+}
+.stApp button[kind="primary"]:hover:enabled {
+    background-color: #193e6e;
+    border-color: #193e6e;
+}
+.stApp .st-key-tracker_header button[kind] {
+    background-color: transparent;
+    border-color: transparent;
+    color: #eaf0f9;
+}
+.stApp .st-key-tracker_header button[kind="primary"]:enabled,
+.stApp .st-key-tracker_header button[kind]:hover:enabled {
+    background-color: #213c61;
+    border-color: #3c5680;
+    color: #fff;
+}
+.stApp button[kind]:focus-visible {
+    outline: 2px solid #5381ba;
+    outline-offset: 2px;
+}
+.metric-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: .65rem 0;
+    border: 1px solid var(--gpc-rule);
+    border-radius: 9px;
+    background: var(--gpc-surface);
+}
+.metric-item {
+    padding: 0 clamp(.6rem, 1.4vw, 1.25rem);
+    min-width: 0;
+}
+.metric-item + .metric-item {
+    border-left: 1px solid var(--gpc-rule);
 }
 .metric-label {
-    color: #6b7280;
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--gpc-muted);
+    font-size: .82rem;
+    font-weight: 620;
+    line-height: 1.2;
 }
 .metric-value {
-    margin-top: 8px;
-    font-size: 34px;
-    font-weight: 850;
-    color: #111827;
-    letter-spacing: -0.04em;
-}
-.section-card {
-    background: white;
-    border-radius: 22px;
-    padding: 24px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
-    margin-top: 16px;
+    margin-top: .15rem;
+    color: var(--gpc-ink);
+    font-size: 1.65rem;
+    font-weight: 760;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.045em;
+    line-height: 1.1;
 }
 .section-title {
-    font-size: 22px;
-    font-weight: 800;
-    color: #111827;
-    letter-spacing: -0.03em;
-    margin-bottom: 4px;
+    color: var(--gpc-copy);
+    font-size: 1.25rem;
+    font-weight: 740;
+    letter-spacing: -.025em;
 }
 .section-subtitle {
-    color: #6b7280;
-    font-size: 14px;
-    margin-bottom: 18px;
+    color: var(--gpc-muted);
+    font-size: .875rem;
 }
-div[data-testid="stDataFrame"] {
-    border-radius: 18px;
-    overflow: hidden;
+.stApp [data-testid="stDataFrame"] {
+    border-radius: 8px;
 }
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
+.stApp .stTabs [data-baseweb="tab-list"] {
+    gap: .45rem;
 }
-.stTabs [data-baseweb="tab"] {
-    background: #f3f4f6;
-    border-radius: 999px;
-    padding: 8px 18px;
-    font-weight: 700;
+.stApp .stTabs [data-baseweb="tab"] {
+    padding: .45rem .7rem;
+    font-weight: 640;
 }
-.stTabs [aria-selected="true"] {
-    background: #dbeafe;
-    color: #1d4ed8;
+.stApp .stTabs [aria-selected="true"] {
+    color: light-dark(#214d82, #adcaf1);
+}
+@media (max-width: 680px) {
+    .st-key-tracker_header .app-title {
+        border: 0;
+        padding-right: 0;
+    }
+    .metric-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        row-gap: .65rem;
+    }
+    .metric-item:nth-child(3) {
+        border-left: 0;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -414,7 +472,6 @@ def login():
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Login</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Enter your username and password.</div>', unsafe_allow_html=True)
 
@@ -441,7 +498,6 @@ def login():
             st.session_state.supplier_name = user["supplier_name"]
             st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
     return False
 
 
@@ -478,83 +534,48 @@ supplier_options = suppliers[
 supplier_options = sorted([s for s in supplier_options if s])
 
 
-st.markdown(f"""
-<div class="top-shell">
-    <div class="app-title">Container Tracker GPC</div>
-    <div class="app-subtitle">Import container overview, ETA tracking and supplier portal</div>
-    <div class="user-pill">👤 {escape(st.session_state.username)} &nbsp; | &nbsp; Role: {role}</div>
-</div>
-""", unsafe_allow_html=True)
+def select_page(page):
+    st.session_state.page = page
 
-if "page" not in st.session_state:
+
+def logout():
+    st.session_state.clear()
+
+
+pages = ["Dashboard"] if is_handler else ["Dashboard", "Containers", "Requests"]
+if is_admin:
+    pages.extend(["Suppliers", "Users"])
+current_page = st.session_state.get("page")
+if current_page not in pages and not (is_admin and current_page == "Logs"):
     st.session_state.page = "Dashboard"
 
-if is_handler:
-    nav_cols = st.columns([1.2, 4, 1.5])
-    if nav_cols[0].button("Dashboard", use_container_width=True):
-        st.session_state.page = "Dashboard"
-    if nav_cols[2].button("🚪 Logout", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
-    st.session_state.page = "Dashboard"
-else:
-    if is_admin:
-        nav_cols = st.columns([1.1, 1.1, 1.1, 1.1, 1.1, 2.2])
+with st.container(key="tracker_header", horizontal=True, horizontal_alignment="distribute",
+                  vertical_alignment="center", gap="small"):
+    st.markdown('<div class="app-title">Container Tracker GPC</div>', unsafe_allow_html=True)
 
-        if nav_cols[0].button("Dashboard", use_container_width=True):
-            st.session_state.page = "Dashboard"
+    with st.container(horizontal=True, vertical_alignment="center", gap="xxsmall", width="content"):
+        for page in pages:
+            st.button(
+                page, key=f"nav_{page.lower()}", type="primary" if page == st.session_state.page else "secondary",
+                on_click=select_page, args=(page,),
+            )
 
-        if nav_cols[1].button("Containers", use_container_width=True):
-            st.session_state.page = "Containers"
+    with st.container(horizontal=True, vertical_alignment="center", gap="xxsmall", width="content"):
+        account = escape(st.session_state.username)
+        st.markdown(f'<div class="user-pill">{account} · {role.title()}</div>', unsafe_allow_html=True)
+        st.button("Logout", key="nav_logout", on_click=logout)
 
-        if nav_cols[2].button("Requests", use_container_width=True):
-            st.session_state.page = "Requests"
-
-        if nav_cols[3].button("Suppliers", use_container_width=True):
-            st.session_state.page = "Suppliers"
-
-        if nav_cols[4].button("Users", use_container_width=True):
-            st.session_state.page = "Users"
-
-        if nav_cols[5].button("🚪 Logout", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-
-    else:
-        nav_cols = st.columns([1.1, 1.1, 4, 1.5])
-
-        if nav_cols[0].button("Dashboard", use_container_width=True):
-            st.session_state.page = "Dashboard"
-
-        if nav_cols[1].button("Containers", use_container_width=True):
-            st.session_state.page = "Containers"
-
-        if nav_cols[2].button("Requests", use_container_width=True):
-            st.session_state.page = "Requests"
-
-        if nav_cols[3].button("🚪 Logout", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-
-        if st.session_state.page in ["Logs", "Suppliers", "Users"]:
-            st.session_state.page = "Dashboard"
-
-
-total = len(active_view)
-on_water = len(active_view[active_view["status"] == "On water"])
-arriving_this_week = len(active_view[active_view["arrival_week"] == current_week_code()])
-delayed = len(active_view[active_view["status"] == "Delayed"])
-
-k1, k2, k3, k4 = st.columns(4)
-
-with k1:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Active Containers</div><div class="metric-value">{total}</div></div>', unsafe_allow_html=True)
-with k2:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">On Water</div><div class="metric-value">{on_water}</div></div>', unsafe_allow_html=True)
-with k3:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Arriving This Week</div><div class="metric-value">{arriving_this_week}</div></div>', unsafe_allow_html=True)
-with k4:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Delayed</div><div class="metric-value">{delayed}</div></div>', unsafe_allow_html=True)
+metrics = (
+    ("Active containers", len(active_view)),
+    ("On water", active_view["status"].eq("On water").sum()),
+    ("Arriving this week", active_view["arrival_week"].eq(current_week_code()).sum()),
+    ("Delayed", active_view["status"].eq("Delayed").sum()),
+)
+metric_items = "".join(
+    f'<div class="metric-item"><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>'
+    for label, value in metrics
+)
+st.markdown(f'<div class="metric-strip">{metric_items}</div>', unsafe_allow_html=True)
 
 
 BULK_FIELDS = [
@@ -562,7 +583,10 @@ BULK_FIELDS = [
     "departure_week", "arrival_week", "eta_date", "status", "shipping_line", "bl_number",
 ]
 EDIT_FIELDS = set(BULK_FIELDS) | {"booking_number", "notes", "shipping_cost"}
-TABLE_COLUMNS = BULK_FIELDS + ["notes"]
+TABLE_COLUMNS = [
+    "container_number", "invoice_number", "supplier", "status", "eta_date", "arrival_week",
+    "destination_port", "origin_port", "departure_week", "shipping_line", "bl_number", "notes",
+]
 TABLE_LABELS = {
     "container_number": "Container No.",
     "invoice_number": "Invoice No.",
@@ -671,11 +695,11 @@ def filter_values(series):
 
 
 def filter_containers(view, key):
-    search = st.text_input(
-        "Search containers", placeholder="Container No., Invoice No., Supplier or B/L No.",
+    search_col, c1, c2, c3, c4 = st.columns([2.35, 1.2, 1.05, 1.1, 1])
+    search = search_col.text_input(
+        "Search containers", placeholder="Container, invoice, supplier or B/L",
         key=f"{key}_search",
     ).strip()
-    c1, c2, c3, c4 = st.columns(4)
 
     def choose(column, label, values, widget_key):
         widget_key = f"{key}_{widget_key}"
@@ -836,23 +860,23 @@ def render_container_actions(selected, key):
             render_container_edit(row, key)
         return
 
-    c1, c2, c3 = st.columns([1, 1, 3])
     editable = len(selected) == 1 and can_manage_container(selected[0])
-    if c1.button("Edit", type="primary", disabled=not editable, key=f"{key}_edit"):
-        st.session_state[action_key] = ("edit", selected)
-        st.rerun()
-    if not is_handler:
-        deletable = bool(selected) and all(can_manage_container(row, delete=True) for row in selected)
-        if c2.button("Delete", disabled=not deletable, key=f"{key}_delete"):
-            st.session_state[action_key] = ("delete", selected)
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        if st.button("Edit", type="primary", disabled=not editable, key=f"{key}_edit"):
+            st.session_state[action_key] = ("edit", selected)
             st.rerun()
+        if not is_handler:
+            deletable = bool(selected) and all(can_manage_container(row, delete=True) for row in selected)
+            if st.button("Delete", disabled=not deletable, key=f"{key}_delete"):
+                st.session_state[action_key] = ("delete", selected)
+                st.rerun()
 
-    if len(selected) == 1:
-        c3.text(container_label(selected[0]))
-    elif selected:
-        c3.caption(f"{len(selected)} containers selected.")
-    else:
-        c3.caption("Select a row using the checkbox at the left of the table.")
+        if len(selected) == 1:
+            st.text(container_label(selected[0]))
+        elif selected:
+            st.caption(f"{len(selected)} containers selected.")
+        else:
+            st.caption("Double-click a Status cell to change it. Changes save automatically.")
 
 
 STATUS_BY_LABEL = {status_icon(status): status for status in STATUSES}
@@ -889,13 +913,12 @@ def save_overview_statuses(key, editor_key, rows, initial_checked):
 
 
 def render_container_overview(view, key):
-    actions = st.container()
     filtered = filter_containers(view, key)
+    actions = st.container()
     selected = []
     if filtered.empty:
         st.info("No containers match your search and filters.")
     else:
-        st.caption("Double-click a Status cell to change it. Changes save automatically.")
         table = filtered[TABLE_COLUMNS].reset_index(drop=True)
         table["status"] = table["status"].map(status_icon)
         rows = filtered.to_dict("records")
@@ -911,11 +934,13 @@ def render_container_overview(view, key):
         table.insert(0, "_checked", filtered["container_id"].isin(initial_checked).to_numpy())
         column_config = {
             **TABLE_LABELS,
-            "_checked": st.column_config.CheckboxColumn("Select", width="small", default=False),
-            "status": st.column_config.SelectboxColumn("Status", options=list(STATUS_BY_LABEL), required=True),
+            "_checked": st.column_config.CheckboxColumn("Select", width=65, default=False),
+            "status": st.column_config.SelectboxColumn(
+                "Status", width=172, options=list(STATUS_BY_LABEL), required=True,
+            ),
         }
         edited = st.data_editor(
-            table, use_container_width=True, hide_index=True, column_config=column_config,
+            table, width="stretch", hide_index=True, column_config=column_config, row_height=36,
             disabled=[col for col in TABLE_COLUMNS if col != "status"], key=editor_key,
             on_change=save_overview_statuses, args=(key, editor_key, rows, initial_checked),
         )
@@ -968,8 +993,9 @@ def render_bulk_editor(filtered):
 
 
 if st.session_state.page == "Dashboard":
-    st.subheader("Container Overview")
-    include_closed = st.checkbox("Include completed and cancelled containers")
+    with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+        st.subheader("Container Overview")
+        include_closed = st.checkbox("Include completed and cancelled containers")
     dashboard_view = render_container_overview(containers_view if include_closed else active_view, "dashboard")
     render_bulk_editor(dashboard_view)
 
@@ -1075,11 +1101,9 @@ elif st.session_state.page == "Containers" and not is_handler:
                     st.success("Container added.")
                     st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 elif st.session_state.page == "Requests" and not is_handler:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Requests</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Create and follow up purchase requests.</div>', unsafe_allow_html=True)
 
@@ -1264,12 +1288,10 @@ elif st.session_state.page == "Requests" and not is_handler:
                     st.success("Request status updated.")
                     st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 
 elif st.session_state.page == "Suppliers" and is_admin:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Suppliers</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Manage suppliers.</div>', unsafe_allow_html=True)
 
@@ -1317,12 +1339,10 @@ elif st.session_state.page == "Suppliers" and is_admin:
                     st.success("Supplier added.")
                     st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 elif st.session_state.page == "Users" and is_admin:
     users = read_csv(USERS_PATH, USER_COLUMNS)
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Users</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Create admin, handler or supplier users.</div>', unsafe_allow_html=True)
 
@@ -1371,11 +1391,9 @@ elif st.session_state.page == "Users" and is_admin:
                     st.success("User added.")
                     st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 elif st.session_state.page == "Logs" and is_admin:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Container Logs</div>', unsafe_allow_html=True)
     st.markdown('<div class="section-subtitle">Audit trail for container status changes and edits.</div>', unsafe_allow_html=True)
 
@@ -1389,5 +1407,3 @@ elif st.session_state.page == "Logs" and is_admin:
             use_container_width=True,
             hide_index=True,
         )
-
-    st.markdown('</div>', unsafe_allow_html=True)
