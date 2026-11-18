@@ -648,17 +648,22 @@ def save_container_changes(originals, *, edits=None, delete=False):
     ref.edit(commit.sha, force=False)
 
 
-def submit_container_changes(originals, *, edits=None, delete=False):
+def submit_container_changes(originals, *, edits=None, delete=False, error_key=None):
     try:
         save_container_changes(originals, edits=edits, delete=delete)
     except ContainerChangeError as exc:
-        st.error(str(exc))
-        return False
+        message = str(exc)
     except Exception:
         logger.exception("Could not save container changes")
-        st.error("The change could not be confirmed. Refresh the overview before trying again.")
-        return False
-    return True
+        message = "The change could not be confirmed. Refresh the overview before trying again."
+    else:
+        return True
+
+    if error_key:
+        st.session_state[error_key] = message
+    else:
+        st.error(message)
+    return False
 
 
 def filter_values(series):
@@ -705,12 +710,17 @@ def apply_container_filters(view, search, supplier, status, arrival, ascending):
     return view.sort_values(["arrival_week", "eta_date", "container_id"], ascending=ascending)
 
 
+def reset_container_editor(key, checked_ids=()):
+    generation_key = f"{key}_selection_generation"
+    st.session_state[generation_key] = st.session_state.get(generation_key, 0) + 1
+    st.session_state[f"{key}_checked_ids"] = checked_ids
+
+
 def finish_container_action(key, message=None):
     st.session_state.pop(f"{key}_action", None)
     if message:
         st.session_state[f"{key}_notice"] = message
-        generation_key = f"{key}_selection_generation"
-        st.session_state[generation_key] = st.session_state.get(generation_key, 0) + 1
+        reset_container_editor(key)
     st.rerun()
 
 
@@ -792,6 +802,9 @@ def render_container_edit(row, key):
 
 def render_container_actions(selected, key):
     action_key = f"{key}_action"
+    error = st.session_state.pop(f"{key}_status_error", None)
+    if error:
+        st.error(error)
     notice = st.session_state.pop(f"{key}_notice", None)
     if notice:
         st.success(notice)
@@ -842,6 +855,39 @@ def render_container_actions(selected, key):
         c3.caption("Select a row using the checkbox at the left of the table.")
 
 
+STATUS_BY_LABEL = {status_icon(status): status for status in STATUSES}
+
+
+def save_overview_statuses(key, editor_key, rows, initial_checked):
+    # The widget reports positions from the table that was displayed to the user.
+    edited_rows = st.session_state[editor_key]["edited_rows"]
+    originals = []
+    changes = {}
+    for position, fields in edited_rows.items():
+        if 0 <= position < len(rows):
+            row = rows[position]
+            status = STATUS_BY_LABEL.get(fields.get("status"))
+            if status and status != row["status"]:
+                originals.append(row)
+                changes[row["container_id"]] = {"status": status}
+
+    if not originals:
+        return
+
+    if submit_container_changes(originals, edits=changes, error_key=f"{key}_status_error"):
+        st.session_state[f"{key}_notice"] = (
+            f"Status updated to {changes[originals[0]['container_id']]['status']}."
+            if len(originals) == 1 else f"Status updated for {len(originals)} containers."
+        )
+
+    checked = tuple(
+        row["container_id"] for position, row in enumerate(rows)
+        if edited_rows.get(position, {}).get("_checked", row["container_id"] in initial_checked)
+    )
+    st.session_state.pop(f"{key}_action", None)
+    reset_container_editor(key, checked)
+
+
 def render_container_overview(view, key):
     actions = st.container()
     filtered = filter_containers(view, key)
@@ -849,18 +895,32 @@ def render_container_overview(view, key):
     if filtered.empty:
         st.info("No containers match your search and filters.")
     else:
-        table = filtered[TABLE_COLUMNS].copy()
+        st.caption("Double-click a Status cell to change it. Changes save automatically.")
+        table = filtered[TABLE_COLUMNS].reset_index(drop=True)
         table["status"] = table["status"].map(status_icon)
-        ids = filtered["container_id"].tolist()
-        selection_signature = sha256_hash(json.dumps(ids))
+        rows = filtered.to_dict("records")
+        signature = sha256_hash(json.dumps(rows))
         generation = st.session_state.get(f"{key}_selection_generation", 0)
-        selection = st.dataframe(
-            table, use_container_width=True, hide_index=True, column_config=TABLE_LABELS,
-            key=f"{key}_rows_{generation}_{selection_signature}", on_select="rerun",
-            selection_mode="single-row" if is_handler else "multi-row",
+        editor_key = f"{key}_rows_{generation}_{signature}"
+        seed_key = f"{key}_checked_seed"
+        seed_editor, initial_checked = st.session_state.get(seed_key, (None, ()))
+        if seed_editor != editor_key:
+            # Keep the editor's input stable while its checkbox changes are pending in the widget.
+            initial_checked = st.session_state.get(f"{key}_checked_ids", ())
+            st.session_state[seed_key] = editor_key, initial_checked
+        table.insert(0, "_checked", filtered["container_id"].isin(initial_checked).to_numpy())
+        column_config = {
+            **TABLE_LABELS,
+            "_checked": st.column_config.CheckboxColumn("Select", width="small", default=False),
+            "status": st.column_config.SelectboxColumn("Status", options=list(STATUS_BY_LABEL), required=True),
+        }
+        edited = st.data_editor(
+            table, use_container_width=True, hide_index=True, column_config=column_config,
+            disabled=[col for col in TABLE_COLUMNS if col != "status"], key=editor_key,
+            on_change=save_overview_statuses, args=(key, editor_key, rows, initial_checked),
         )
-        positions = sorted(set(i for i in selection.selection.rows if 0 <= i < len(filtered)))
-        selected = filtered.iloc[positions].to_dict("records")
+        selected = [row for row, checked in zip(rows, edited["_checked"]) if checked]
+    st.session_state[f"{key}_checked_ids"] = tuple(row["container_id"] for row in selected)
     with actions:
         render_container_actions(selected, key)
     return filtered
